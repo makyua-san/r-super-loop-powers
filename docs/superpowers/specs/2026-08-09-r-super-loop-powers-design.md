@@ -1,9 +1,10 @@
-# goal-loop-orchestrator 設計仕様書
+# r-super-loop-powers 設計仕様書
 
 - 日付: 2026-08-09
 - ステータス: Approved (ブレインストーミング承認済み)
 - 上位文書: `goal_engineering_ai_skill_policy_requirements.docx` (要件定義 Draft v0.1)
-- 対象: 新規プラグイン `goal-loop-orchestrator`(オーバーレイスキル + モデル運用ポリシー + テンプレート)
+- 対象: 新規プラグイン `r-super-loop-powers`(オーバーレイスキル + モデル運用ポリシー + テンプレート)
+- 命名: 要件定義の候補名 `goal-loop-orchestrator`(仮)は標準スキル群との区別がつきにくいため、`r-super-loop-powers` に確定(ユーザー指定)。プラグイン名・スキル名・対象プロジェクトの成果物ディレクトリ名をこの名称で統一する
 
 ## 1. 概要
 
@@ -20,7 +21,8 @@ Fableは承認ゲート・入口の基準設定・エスカレーション処理
 | D4 | Codex呼び出し | Opusメインが subagent-driven-development のプロセス(タスク分解→実装→レビューのループ)を駆動し、各タスクの実装+自己検証を `codex exec` に委譲 | 要件の役割分担(Codex=実装)に忠実。途中検知・エスカレーション粒度を確保 |
 | D5 | グラレコ | `codex exec` 経由でgpt-image-1により生成。単位は**マイルストーンごと**、Human ACCEPT後 | ユーザー確認済み(Codex側で画像生成可能)。OpenAI APIキー不要 |
 | D6 | ゲート・状態管理 | 純Markdown契約(案A)。SKILL.mdの手順が「フェーズ遷移前に state.md と必須Artifactの存在を確認し、欠落なら進まない」を規定。スクリプト・hooksなし | SK-012(軽量性)、要件18章「痛点が出てから自動化」 |
-| D7 | 保存場所 | 対象プロジェクトの `docs/goal-loop/<goal-slug>/` 配下(§5参照) | 要件17章の未決事項を確定 |
+| D7 | 保存場所 | 対象プロジェクトの `docs/r-super-loop-powers/<goal-slug>/` 配下(§5参照) | 要件17章の未決事項を確定 |
+| D9 | 名称 | プラグイン名・スキル名・成果物ディレクトリ名を `r-super-loop-powers` に統一 | 標準スキル群(superpowers等)との区別を明確にするため(ユーザー指定) |
 | D8 | コミット責任 | Human ACCEPT後にOpusメインセッションが確定コミット。`codex exec` にはコミットさせない | 要件17章原案を採用。確定制御(SK-009)を単一主体に集約 |
 
 ### 要件17章の未決事項の確定
@@ -45,10 +47,10 @@ Fableは承認ゲート・入口の基準設定・エスカレーション処理
 ```
 r-super-loop-powers/
 ├── .claude-plugin/
-│   ├── plugin.json          # name: goal-loop-orchestrator
+│   ├── plugin.json          # name: r-super-loop-powers
 │   └── marketplace.json     # ローカルマーケットプレイス定義
 ├── skills/
-│   └── goal-loop/
+│   └── r-super-loop-powers/
 │       ├── SKILL.md         # オーケストレーター本体 (SK-001〜012を実装)
 │       ├── policy.md        # モデル運用ポリシー (PL-001〜010)
 │       └── templates/
@@ -63,13 +65,13 @@ r-super-loop-powers/
 └── README.md
 ```
 
-- スキル呼び出し名: `/goal-loop`(= `goal-loop-orchestrator:goal-loop`)。
-- インストール: `/plugin marketplace add C:\Users\makyu\Desktop\project\r-super-loop-powers` → `/plugin install goal-loop-orchestrator`。
+- スキル呼び出し名: `/r-super-loop-powers`(= `r-super-loop-powers:r-super-loop-powers`)。
+- インストール: `/plugin marketplace add C:\Users\makyu\Desktop\project\r-super-loop-powers` → `/plugin install r-super-loop-powers`。
 
 ## 5. 対象プロジェクト側の成果物レイアウト
 
 ```
-<対象プロジェクト>/docs/goal-loop/<goal-slug>/
+<対象プロジェクト>/docs/r-super-loop-powers/<goal-slug>/
 ├── state.md             # 現在フェーズ / 担当 / 次ゲート / 更新日時
 ├── goal-seed.md         # A1 人間の意図(原文のまま保存)
 ├── goal-frame.md        # Fable入口出力 = 方向・制約・承認基準の原本
@@ -96,7 +98,7 @@ Goal Definition → Milestone Implementation → Human Acceptance → Finalizati
       └────── REPLAN ──────┴──────── Fable判断で戻り先決定
 ```
 
-`state.md` は常に次を保持する: 現在フェーズ、対象マイルストーン、担当(次に動くモデル)、次のゲート、必須Artifactのチェックリスト。**全フェーズで「state.md更新 → 作業」の順**とし、セッション中断後は `/goal-loop` 起動時にstate.mdから現在地を復元する(NFR-04)。
+`state.md` は常に次を保持する: 現在フェーズ、対象マイルストーン、担当(次に動くモデル)、次のゲート、必須Artifactのチェックリスト。**全フェーズで「state.md更新 → 作業」の順**とし、セッション中断後は `/r-super-loop-powers` 起動時にstate.mdから現在地を復元する(NFR-04)。
 
 ## 7. ワークフローA: Goal Plan作成(Claude Code具体化)
 
@@ -167,7 +169,7 @@ Opusメイン自身の消費は記録対象外(常駐のため)。Retrospective�
 
 要件16章の10項目をそのまま採用する。加えてハーネス固有の確認として:
 
-1. `/plugin install` 後、`/goal-loop` が起動しstate.md不在時に新規ゴール開始フローに入る。
+1. `/plugin install` 後、`/r-super-loop-powers` が起動しstate.md不在時に新規ゴール開始フローに入る。
 2. セッションを切って再開しても、state.mdから現在フェーズを復元できる。
 3. Fableサブエージェント呼び出しの**初回入力**にgoal-frame + submission(+エスカレーション6点)以外の生コンテキストが含まれない(Fable自身が追加要求した資料は除く)。
 4. `codex exec` がコミットを作らない。
