@@ -1,0 +1,14 @@
+{
+  "name": "r-super-loop-powers-marketplace",
+  "owner": {
+    "name": "rnakayama",
+    "email": "rnakayama831@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "r-super-loop-powers",
+      "source": "./",
+      "description": "Superpowersの上位に薄く重なるゴールループ・オーケストレーション層(オーバーレイスキル + モデル運用ポリシー + テンプレート)"
+    }
+  ]
+}
