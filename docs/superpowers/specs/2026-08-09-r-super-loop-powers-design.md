@@ -11,6 +11,32 @@
 Superpowersを改造せず、その上位に薄い「ゴールループ・オーケストレーション層」をプラグインとして追加する。
 Fableは承認ゲート・入口の基準設定・エスカレーション処理に限定して呼び出し、日常のブレスト・仕様化・計画・レビュー・レポートはOpusが、実装はCodex(`codex exec`)が担当する。人間はAI側の承認ループが完了した後に、Human Review Reportを入口として最終受け入れを行う。
 
+### 1.1 Superpowersとの位置づけ(レイヤーモデル)
+
+本プラグインの目的は **(1) ゴールループの管理、(2) 適切なヒューマン・イン・ザ・ループの配置、(3) 適切なモデルの使用** であり、それによって **効率化(Fable消費の最適配分)・安定化(ゲート順序と成果物契約の固定、再開性)・精度向上(独立レビューとゴール整合ゲートを人間より前に置く)** を実現する。作業そのものの進め方には介入しない。
+
+| レイヤー | 担うもの | 担わないもの |
+|---|---|---|
+| **Superpowers**(実行プロセス層 = HOW) | ブレスト、仕様化、計画、TDD、subagent-driven development、デバッグ、検証など「作業をどう進めるか」の技法。各スキル内部の手順・品質基準 | フェーズ間の責任境界、モデル選定、ゴール整合の承認、人間ゲートの配置 |
+| **r-super-loop-powers**(責任・ゲート層 = WHO / WHEN / WHETHER) | いまどのフェーズか、次に必要なArtifactは何か、誰(どのモデル)が実行し誰が判定するか、人間へ返すタイミング、差し戻し先の決定 | Superpowersスキルの内部手順の変更・複製・上書き |
+
+**接続規約**:
+
+- 本プラグインはSuperpowersスキルを**スキル名で呼び出し、標準の成果物(spec / plan等)をそのまま消費する**だけとする。内部にパッチせず、出力形式にも追加要求をしない(ゴールループ用の情報はオーバーレイ側Artifactに別途保存する)。これによりSuperpowers更新時の追従コストを最小化する(NFR-01)。
+- ゲートは**Superpowersスキルの境界(入口・出口)にのみ**挿入する。スキル実行中には割り込まない。例: Goal Gate(A-6)はbrainstorming→writing-plans完了後に置かれ、brainstorming内部のHARD-GATEや質問フローには一切干渉しない。
+- スキル内部の指示と本プラグインが競合した場合、**スキル実行中はスキル側が優先**、**フェーズ遷移・ゲート順序・モデル割り当てはプラグイン側が優先**する。
+- Codex(`codex exec`)はSuperpowersスキルを直接利用できないため、subagent-driven developmentの**プロセス構造**(タスク分解→実装→レビューのループ)をOpusメインが駆動し、TDD等の品質要求はタスクプロンプトの受け入れ条件として伝達する。
+
+**フェーズとSuperpowersスキルの対応**:
+
+| フェーズ | 利用するSuperpowersスキル | 本プラグインが足すもの |
+|---|---|---|
+| Goal Definition | brainstorming, writing-plans | 前: Fable Goal Frame(A-1) / 後: Goal Gate(A-6)+Human承認(A-8) |
+| Milestone Implementation | subagent-driven developmentのプロセス構造(実行はcodex exec)、verification-before-completion(証拠確認) | 独立レビュー(B-5)、Implementation Gate(B-6) |
+| Human Acceptance | — | Human Review Report(B-7)、受け入れ記録(B-8/B-9) |
+| Finalization | finishing-a-development-branch(必要に応じて) | ACCEPT前のコミット禁止(SK-009)、確定処理(B-10) |
+| Learning | — | Retrospective Note、グラレコ生成(§12) |
+
 ## 2. 確定した設計決定
 
 | ID | 論点 | 決定 | 根拠 |
