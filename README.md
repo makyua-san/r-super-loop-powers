@@ -64,6 +64,7 @@ Goal Loopの目的は **A. 要件適合性**(作りたかったものを正し�
 - [ ] ACCEPT 記録前に確定コミットが行われない
 - [ ] 人間フィードバックで発見された未知が assumptions.md に追記される
 - [ ] retro.md にループ回数・所要時間・発見された未知が記録される
+- [ ] call-log.md に fable / opus-sub / codex の呼び出しが記録されている
 - [ ] grareco.png が組み込み image_gen ツールで生成される(スクリプト・APIキー使用なし)
 - [ ] セッションを切って再起動 → state.md から現在地が復元される
 

@@ -159,7 +159,7 @@ codex exec "<プロンプト>"
 - 完了後の受け入れ — **MVP**: codexの自己検証報告を確認する(diff精読はしない)。**高信頼**: diffと検証結果を確認する。不合格なら具体的な指摘とともに再実行させる。報告された新規仮定は assumptions.md に追記する。call-logに記録(codex)。
 
 **B-4 エスカレーション(必要時のみ)**
-policy.md の発火条件(否定リスト該当を含む)を検出したら、`templates/escalation.md` の6点に整形し、Agentツール(model: fable)に goal-frame.md + 6点のみを渡す。判断結果を milestone ディレクトリに `escalation-<連番>.md` として保存し、call-logに記録。判断に従って続行する。
+policy.md の発火条件(否定リスト該当を含む)を検出したら、`templates/escalation.md` の6点に整形し、Agentツール(model: fable)に goal-frame.md + 6点 + 関連する未検証仮定(assumptions.mdの該当行、あれば)を渡す。判断結果を milestone ディレクトリに `escalation-<連番>.md` として保存し、call-logに記録。判断に従って続行する。
 
 **B-5 レビューとSubmission作成(Opus)**
 - **MVP**: Opusメインが**セルフチェック**(goal-frame承認基準との対応・残存未知の列挙・未検証仮定の確認)を行い、`templates/approval-submission.md` に従い `milestones/<n>-<名前>/submission.md` を作成する。
