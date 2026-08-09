@@ -148,7 +148,7 @@ policy.md の発火条件を検出したら、`templates/escalation.md` の6点�
 **B-6 Implementation Gate(Fable)**
 前提確認: submission.md が存在し、テスト証拠が含まれること。
 A-6と同じ形式で、goal-frame.md + マイルストーン定義 + submission.md を渡し、「このマイルストーンのゴールを満たしているか」を判定させる。結果を `gate-decision.md` に保存、call-logに記録。
-- PASS → B-7へ
+- PASS → state.md を human-acceptance に更新し、B-7へ
 - REVISE / REPLAN → 指定工程へ差し戻し(人間へは出さない)
 - BLOCKED → 人間へ質問して停止
 
@@ -156,7 +156,7 @@ A-6と同じ形式で、goal-frame.md + マイルストーン定義 + submission
 `templates/human-review-report.md` に従い `human-report.md` を作成する。受け入れテスト手順は人間が5〜15分で実行できる具体性で書く。
 
 **B-8 Human Acceptance(人間)**
-human-report.md を人間に提示し、受け入れテストを依頼する。結果を `acceptance.md` に記録する(ACCEPT / REJECT + コメント)。
+human-report.md を人間に提示し、受け入れテストを依頼する。結果を `acceptance.md` に記録する(ACCEPT / REJECT + コメント)。ACCEPTの場合は state.md を finalization に更新する。
 
 **B-9 REJECT処理(Fable)**
 REJECTの場合、Agentツール(model: fable)に goal-frame.md + human-report.md + REJECT理由を渡し、戻り先(タスク修正 / マイルストーン再計画 / ゴール再確認)を決定させる。決定に従い該当フェーズへ戻る。call-logに記録。
