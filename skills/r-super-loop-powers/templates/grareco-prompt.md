@@ -1,6 +1,6 @@
 # グラフィックレコード生成指示テンプレート
 
-<!-- 使い方: Opusが <対象ディレクトリ> と <入力ファイル> を埋めて codex exec に渡す。 -->
+<!-- 使い方: Opusが <対象ディレクトリ> を埋めて codex exec に渡す。 -->
 <!-- 前提: grareco-input.md(human-report / gate-decision / retro の要約)が同ディレクトリに存在すること。 -->
 
 以下を `codex exec` のプロンプトとして使う:

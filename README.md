@@ -20,6 +20,7 @@ Superpowersの上位に薄く重なる**ゴールループ・オーケストレ�
 
 - Claude Code + Superpowersプラグイン(改造不要)
 - Codex CLI(`codex login` 済み。モデル等は `~/.codex/config.toml` に従う)
+- 対象プロジェクトによっては Codex の `trust_level` 設定(`~/.codex/config.toml` の `[projects]`)が必要になる場合がある
 - メインセッションは **`/model opus`** で運用する(Fable消費を承認ゲートに限定するため)
 
 ## インストール

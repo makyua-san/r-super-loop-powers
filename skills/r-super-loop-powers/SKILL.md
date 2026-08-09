@@ -23,14 +23,17 @@ description: Use when starting or resuming a goal-engineering loop (ゴールル
 
 ```
 docs/r-super-loop-powers/<goal-slug>/
-├── state.md             # 現在地(下記フォーマット)
-├── goal-seed.md         # 人間の意図(原文のまま)
-├── goal-frame.md        # Fable入口出力 = 承認基準の原本
-├── goal-plan.md         # Superpowers spec/planへのリンク + マイルストーン一覧
-├── call-log.md          # 呼び出し記録(PL-007)
+├── state.md                 # 現在地(下記フォーマット)
+├── goal-seed.md             # 人間の意図(原文のまま)
+├── goal-frame.md            # Fable入口出力 = 承認基準の原本
+├── goal-plan.md             # Superpowers spec/planへのリンク + マイルストーン一覧
+├── goal-plan-submission.md  # A-5 Goal Plan承認用submission
+├── goal-gate-decision.md    # A-6 Goal Gate判定
+├── call-log.md              # 呼び出し記録(PL-007)
 └── milestones/<n>-<名前>/
     ├── submission.md / gate-decision.md / human-report.md
     ├── acceptance.md / retro.md / grareco-input.md / grareco.png
+    └── escalation-<連番>.md  # B-4発生時のみ
 ```
 
 `<goal-slug>` はGoal Seedの内容から短いkebab-caseで命名する。
@@ -53,7 +56,7 @@ docs/r-super-loop-powers/<goal-slug>/
 
 | フェーズ | 入口条件 | このフェーズで必須の成果物 | 出口のゲート |
 |---|---|---|---|
-| goal-definition | goal-seed.md | goal-frame.md → spec/plan → goal-plan.md → submission.md | Goal Gate(Fable)→ Human承認 |
+| goal-definition | goal-seed.md | goal-frame.md → spec/plan → goal-plan.md → goal-plan-submission.md | Goal Gate(Fable)→ Human承認 |
 | milestone-implementation | Goal Plan承認済み | 実装diff + テスト証拠 → 独立レビュー → submission.md | Implementation Gate(Fable) |
 | human-acceptance | Fable PASS | human-report.md | 人間のACCEPT/REJECT |
 | finalization | acceptance.md に ACCEPT | 確定コミット | なし |
@@ -119,7 +122,7 @@ Fable PASS後、Goal Plan(と goal-frame)を人間に提示し、実装へ進む
 ## ワークフローB: Milestone Implementation(マイルストーンごとに繰り返す)
 
 **B-1 開始確認(Fable・軽量)**
-Agentツール(model: fable)に goal-frame.md + 対象マイルストーン定義(goal-plan.mdの該当部分)を渡し、「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ」と指示する。call-logに記録。
+直近の retro.md 最大3件の要点を抜粋し、Agentツール(model: fable)に goal-frame.md + 対象マイルストーン定義(goal-plan.mdの該当部分) + retro抜粋(あれば)を渡し、「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ」と指示する。call-logに記録。
 
 **B-2〜B-3 タスク実装と自己検証(Codex)**
 Superpowersのsubagent-driven-developmentと同じプロセス構造(タスク分解 → 実装 → レビューのループ)を自分(Opus)が駆動し、**各タスクの実装は `codex exec` に委譲する**:
@@ -159,7 +162,7 @@ A-6と同じ形式で、goal-frame.md + マイルストーン定義 + submission
 human-report.md を人間に提示し、受け入れテストを依頼する。結果を `acceptance.md` に記録する(ACCEPT / REJECT + コメント)。ACCEPTの場合は state.md を finalization に更新する。
 
 **B-9 REJECT処理(Fable)**
-REJECTの場合、Agentツール(model: fable)に goal-frame.md + human-report.md + REJECT理由を渡し、戻り先(タスク修正 / マイルストーン再計画 / ゴール再確認)を決定させる。決定に従い該当フェーズへ戻る。call-logに記録。
+REJECTの場合、Agentツール(model: fable)に goal-frame.md + human-report.md + REJECT理由を渡し、戻り先(タスク修正 / マイルストーン再計画 / ゴール再確認)を決定させる。決定に従い該当フェーズへ戻り、戻り先に応じて state.md を更新する。call-logに記録。
 
 **B-10 確定処理(Opus)**
 acceptance.md に ACCEPT があることを確認してから、変更を確定コミットする。state.md を learning へ更新する。
