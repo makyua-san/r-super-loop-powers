@@ -1,6 +1,6 @@
 # Escalation — <goal-slug> / <フェーズ>
 
-<!-- 作成者: Opus(検出者がCodexの場合もOpusが整形)。Fableへ goal-frame.md と本文書のみを渡す。 -->
+<!-- 作成者: Opus(検出者がCodexの場合もOpusが整形)。Fableへ goal-frame.md と本文書(+ 関連する未検証仮定)を渡す。 -->
 
 1. **何をしようとしたか**: <1〜2行>
 2. **何が判断不能か**: <1〜2行>
