@@ -1,0 +1,16 @@
+{
+  "name": "r-super-loop-powers",
+  "description": "Superpowersの上位に薄く重なるゴールループ・オーケストレーション層。フェーズ管理、Fable承認ゲート、ヒューマン・イン・ザ・ループ配置、モデル責任分担(Opus実行/Fable判定/Codex実装)を制御する。",
+  "version": "0.1.0",
+  "author": {
+    "name": "rnakayama",
+    "email": "rnakayama831@gmail.com"
+  },
+  "keywords": [
+    "goal-engineering",
+    "orchestration",
+    "superpowers-overlay",
+    "human-in-the-loop",
+    "model-routing"
+  ]
+}
