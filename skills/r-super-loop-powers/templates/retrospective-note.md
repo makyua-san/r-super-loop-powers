@@ -1,6 +1,6 @@
-# Retrospective — <goal-slug> / Milestone <n>
+# Retrospective — <goal-slug> / <対象: Checkpoint <n>-<名前> | Milestone <n>>
 
-<!-- 作成者: Opus(Human ACCEPT + 確定コミット後)。次回のGoal Frame作成時に自動参照される。短く保つ。 -->
+<!-- 作成者: Opus(Human ACCEPT + 確定処理後)。MVPではCheckpoint単位(対象は前回Checkpoint以降の全マイルストーン)、高信頼ではマイルストーン単位で作成する。次回のGoal Frame作成時に自動参照される。短く保つ。 -->
 
 ## うまく機能したこと(最大3点)
 - <...>
@@ -12,13 +12,13 @@
 - <...>
 
 ## 発見された未知
-- <このマイルストーンで新たに既知化された未知・学び。次回の入力になる。なければ「なし」>
+- <この区間で新たに既知化された未知・学び。次回の入力になる。なければ「なし」>
 
 ## 再利用できる知見・テンプレート候補
 - <なければ「なし」。このプロジェクトの外でも効くものは orca-meta へ `record_lesson` で送る対象(軸: person / agent / method)>
 
 ## 観測
 - ループ回数: <Fableゲート差し戻し(REVISE/REPLAN)の回数を含む>
-- 呼び出し概算: opus-sub <n>回 / codex <n>回 / fable <n>回(目安 Opus:Fable ≈ 5:1)
-- 主要フェーズ所要時間: <call-log.mdの時刻から概算(実装 / ゲート / レポート等)>
+- 呼び出し概算: opus-sub <n>回 / codex <n>回 / fable <n>回(目安 Opus:Fable ≈ 5:1。ワークフローB以降に適用)
+- 主要フェーズ所要時間: <call-log.mdの時刻から概算(ヒアリング / 設計 / 実装 / ゲート / レポート等)>
 - 特記: <比率が大きく外れた場合の理由。なければ「なし」>
