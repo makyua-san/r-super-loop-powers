@@ -20,7 +20,7 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 
 | 工程 | MVP(既定) | 高信頼 |
 |---|---|---|
-| ヒアリング(A-1a) | Fable駆動の往復ヒアリング(無自覚の既知の表面化。目安2〜4往復) | 省略(A-1bのGoal Frame作成のみ) |
+| ヒアリング(A-1a) | Fable駆動の往復ヒアリング(無自覚の既知の表面化。目安2〜4往復) | 初回ラウンド(開発タイプ確認)のみ |
 | Goal Frame / Goal Gate(A-1b / A-6) | 実施(表面化した既知+未知マップ+強度+終了条件+Checkpoint配置判定) | 実施(未知マップ+強度+終了条件を含む) |
 | ブレスト〜Plan(A-2〜A-4) | superpowers:brainstormingを**Fable代理回答**で実施(人間はASK_HUMAN時のみ) | 人間参加のsuperpowers:brainstorming |
 | Human Goal Plan承認(A-8) | WHATレベル(ゴール解釈・要件・制約・Checkpoint配置・仮定台帳サマリ) | 従来(spec/planレビュー含む) |
@@ -28,11 +28,11 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 | 実装委譲(B-2) | マイルストーン単位でまとめて codex exec に委譲可(タスク細分化しない) | タスク分解して個別に委譲 |
 | タスク単位の受け入れ(B-3) | codex自己検証報告の確認のみ(diff精読なし) | Opusメインがdiffを確認 |
 | テスト要求(B-2) | 受け入れ基準に直結する検証+未知低減に効く検証のみ | 単体・結合・lint・型検査をフル要求 |
-| 独立レビュー(B-5) | 省略(Opusメインがsubmission作成時にセルフチェック+decisions.md確定) | Opusサブで実施(PL-003) |
+| 独立レビュー(B-5) | 省略(Opusメインがsubmission作成時にセルフチェック+decisions.md確定) | Opusサブで実施(PL-003)+decisions.md確定 |
 | Implementation Gate(B-6・Fable) | 実施(適合性+残存未知の許容性)。非CheckpointはPASS後に人間承認なしで次マイルストーンへ | 実施(適合性+残存未知の許容性) |
 | Human Report / Acceptance(B-7 / B-8) | **Checkpoint到達時のみ**(評価パッケージ) | マイルストーン毎 |
 | コミット | マイルストーン毎に中間コミット、Checkpoint ACCEPTで確定 | ACCEPT後のみ |
-| Learning | グラレコ+decisions.md=マイルストーン毎 / retro=Checkpoint毎 | マイルストーン毎(従来通り) |
+| Learning | グラレコ+decisions.md=マイルストーン毎 / retro=Checkpoint毎 | マイルストーン毎(従来通り。decisions.mdもマイルストーン毎に確定) |
 
 ## Checkpointとマイルストーン粒度
 

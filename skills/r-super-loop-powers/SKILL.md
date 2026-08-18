@@ -28,10 +28,10 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
 docs/r-super-loop-powers/<goal-slug>/
 ├── state.md                 # 現在地(下記フォーマット)
 ├── goal-seed.md             # 人間の意図(原文のまま)
-├── hearing-log.md           # A-1aヒアリングとASK_HUMAN中継の記録(MVP)
+├── hearing-log.md           # A-1aヒアリングとASK_HUMAN中継の記録(MVP。高信頼はASK_HUMAN中継時のみ)
 ├── goal-frame.md            # Fable入口出力 = 承認基準・強度・未知マップ・終了条件の原本
 ├── assumptions.md           # 仮定台帳(全フェーズで追記)
-├── goal-plan.md             # spec/planリンク + マイルストーン一覧(Checkpoint印) + 主要設計判断
+├── goal-plan.md             # spec/planリンク + マイルストーン一覧(Checkpoint印) + 主要設計判断(Fable代理回答による)
 ├── goal-plan-submission.md  # A-5 Goal Plan承認用submission
 ├── goal-gate-decision.md    # A-6 Goal Gate判定
 ├── call-log.md              # 呼び出し記録(PL-007)
@@ -91,7 +91,7 @@ fable / opus-sub(Opusサブエージェント) / codex を呼ぶたび、およ�
 4. 必須成果物が欠けた状態でFableゲートを呼ばない — 欠落は自分で差し戻して埋める(NFR-05)
 5. `codex exec` にコミットさせない
 6. 否定リストに触れる仮説を自律実行しない — エスカレーションまたは人間確認へ
-7. 代理ブレストに参加したFableインスタンスにゲート判定(A-6 / B-6)をさせない(自己承認の禁止)
+7. 代理ブレストに参加したFableインスタンスにゲート判定(A-6 / B-6)をさせない(自己承認の禁止)(SK-010)
 
 ## Fableサブエージェント共通契約
 
@@ -116,14 +116,14 @@ Opusは質問をそのまま人間へ提示し、回答を `hearing-log.md` に�
 - **MVP**: 代理FableへSendMessageで `templates/goal-frame.md` の構造を渡し、Goal Frame生成を指示する。
 - **高信頼**: 新規Fableインスタンスに `templates/goal-frame.md` の構造 + goal-seed.md 全文 + retro抜粋(あれば)を渡す。
 指示: 「あなたはこのゴールの全体責任者。ゴールの方向・ヒアリングで表面化した既知・制約・今回確定すべきこと・未知マップ(既知の未知と無自覚の未知の探索方針)・承認基準・終了条件(残存未知の許容基準)を定義し、ループ強度(MVP | 高信頼)を理由付きで提案せよ。既定はMVP(品質最大化は目的ではない)。承認基準と終了条件は後でゲート判定の基準として使われる。検証可能な形で書け。」
-出力を `goal-frame.md` に保存し、call-logに記録する。内容をユーザーに提示し、**ループ強度を確定**してもらい、方向のズレがないか確認する。確定した強度を goal-frame.md の「人間の確定」欄と state.md に記録する。
+出力を `goal-frame.md` に保存し、call-logに記録する。内容をユーザーに提示し、**ループ強度を確定**してもらい、方向のズレがないか確認する。A-1aで高信頼と答えた後にここでMVPへ確定が変わった場合は、A-1aの深掘りヒアリングを再開してからA-2へ進む。確定した強度を goal-frame.md の「人間の確定」欄と state.md に記録する。
 
 **A-2〜A-4 ブレスト → Spec → Plan(Opus + Superpowers)**
 `superpowers:brainstorming` を起動し、その標準フロー(spec作成 → writing-plans)に完全に従う。スキル内部の手順・ゲートには干渉しない。強度により質問・承認の相手を変える:
 - **高信頼**: 従来通り人間が相手。
-- **MVP(Fable代理ブレスト)**: 質問・設計承認の相手を人間ではなく**代理Fable**(SendMessage)にする。代理Fableへの依頼文に必ず含める: 「あなたはユーザーの代理として回答する。根拠は goal-frame.md と hearing-log.md。**ユーザー固有の判断(好み・業務文脈・優先順位)が必要でヒアリング記録から導けない問い、否定リスト該当、エスカレーション発火条件該当の問いには、回答せず `ASK_HUMAN: <人間向けの質問文>` と返せ**。」 ASK_HUMANが返った質問のみ人間へ提示し、回答を hearing-log.md に追記して代理Fableへ共有する。代理Fableの主要決定(採用アプローチ・設計承認)は goal-plan.md の「主要設計判断」欄に記録する。往復ごとにcall-logへ記録(fable)。
+- **MVP(Fable代理ブレスト)**: 質問・設計承認の相手を人間ではなく**代理Fable**(SendMessage)にする。代理Fableへの依頼文に必ず含める: 「あなたはユーザーの代理として回答する。根拠は goal-frame.md と hearing-log.md。**ユーザー固有の判断(好み・業務文脈・優先順位)が必要でヒアリング記録から導けない問い、否定リスト該当、エスカレーション発火条件該当の問いには、回答せず `ASK_HUMAN: <人間向けの質問文>` と返せ**。」 ASK_HUMANが返った質問のみ人間へ提示し、回答を hearing-log.md に追記して代理Fableへ共有する。代理Fableの主要決定(採用アプローチ・設計承認)は goal-plan.md の「主要設計判断(Fable代理回答による)」欄に記録する。往復ごとにcall-logへ記録(fable)。
 **未知の振り分け**: ヒアリング・ブレスト中に人間または代理Fableが「決めていない / わからない」と答えた問いは、その場で追及せず**仮説化して assumptions.md に記録し、続行する**。goal-frame.md の未知マップと突き合わせる。
-完了後、spec/planへの相対リンクとマイルストーン一覧を `goal-plan.md` に集約し、**Checkpoint印を付ける**(policy.md「Checkpointとマイルストーン粒度」: Checkpoint = ユーザー価値をE2Eで評価できる点。最終マイルストーンは必ずCheckpoint)。「主要設計判断」欄もここに置く。
+完了後、spec/planへの相対リンクとマイルストーン一覧を `goal-plan.md` に集約し、**Checkpoint印を付ける**(policy.md「Checkpointとマイルストーン粒度」: Checkpoint = ユーザー価値をE2Eで評価できる点。最終マイルストーンは必ずCheckpoint)。「主要設計判断(Fable代理回答による)」欄もここに置く。
 
 **A-5 Approval Submission(Opus)**
 `templates/approval-submission.md` に従い、Goal Plan承認用の submission を作成する(対象: Goal Plan全体。**Checkpoint配置**・残存未知リスト・仮定台帳サマリを含める)。保存先: `goal-plan-submission.md`(goal直下)。
@@ -181,7 +181,7 @@ policy.md の発火条件(否定リスト該当・ユーザー固有判断・Sol
 **B-6 Implementation Gate(ゲートFable・新規インスタンス)**
 前提確認: submission.md が存在し、検証証拠と残存未知リストが含まれること。
 共通契約に従い goal-frame.md + マイルストーン定義 + submission.md + assumptions.md の未検証仮定を渡し、判定観点で「このマイルストーンのゴールを満たし、残存未知が許容可能か」を判定させる。結果を `gate-decision.md` に保存、call-logに記録。
-- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成+グラレコ生成(失敗は非ブロック)→ 中間コミット → state.md を次マイルストーンへ更新し、**人間承認なしで次のB-1へ**
+- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)→ 中間コミット → state.md を次マイルストーンへ更新し、**人間承認なしで次のB-1へ**
 - PASS + Checkpointマイルストーン(MVP)または高信頼 → state.md を human-acceptance に更新し、B-7へ
 - REVISE / REPLAN → 指定された工程へ差し戻す(対象の未知・仮定が指定される。人間へは出さない)
 - BLOCKED → 人間へ質問して停止
