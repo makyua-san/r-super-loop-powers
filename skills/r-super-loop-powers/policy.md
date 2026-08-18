@@ -16,7 +16,7 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 
 ## ループ強度
 
-**MVP(既定)** と **高信頼** の2段階。Goal Frame作成時にFableが提案し、人間がGoal Frame確認時に確定する。マイルストーン単位の一時変更は人間が指示できる。FableゲートとHuman Acceptanceは両強度で維持する(要件適合性の保証線) — MVPのHuman AcceptanceはCheckpoint単位で行う。一時変更は state.md の強度欄に記録し、そのマイルストーン完了時に goal-frame.md の確定値へ戻す。
+**MVP(既定)** と **高信頼** の2段階。Goal Frame作成時にFableが提案し、人間がGoal Frame確認時に確定する。マイルストーン単位の一時変更は人間が指示できる。FableゲートとHuman Acceptanceは両強度で維持する(要件適合性の保証線)— MVPのHuman AcceptanceはCheckpoint単位で行う。一時変更は state.md の強度欄に記録し、そのマイルストーン完了時に goal-frame.md の確定値へ戻す。
 
 | 工程 | MVP(既定) | 高信頼 |
 |---|---|---|
