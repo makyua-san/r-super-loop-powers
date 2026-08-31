@@ -29,7 +29,9 @@ Claude Code 上で動く r-super-loop-powers v0.3.0 と**同じ工程・同じ�
 
 **未確定(実装時のスモークテストで確定する)**: (a) `.agents/plugins/marketplace.json` の Git ソース用スキーマ(実物は local 形式のみ確認済み) (b) 親Codexセッション内から `codex exec` を起動できるか(ネスト実行とサンドボックスの相互作用) (c) `codex exec` セッションで画像生成が可能か(グラレコ)。
 
-## 2. 設計決定(C1〜C14)
+## 2. 設計決定(C1〜C16)
+
+C15・C16 は Task 1 のスモークテスト(2026-08-31実施、`docs/superpowers/notes/2026-08-31-codex-smoke.md`)の実測を受けて追加した。
 
 | ID | 決定 | 内容 | 根拠 |
 |---|---|---|---|
@@ -47,6 +49,8 @@ Claude Code 上で動く r-super-loop-powers v0.3.0 と**同じ工程・同じ�
 | C12 | プロンプトの受け渡し | 長文プロンプトは引数ではなく stdin(`codex exec -` へヒアドキュメント)で渡す | Windows の引数長・エスケープ問題の回避 |
 | C13 | 起動時チェックの拡張 | Claude版の4項目に「前提チェック(`codex` CLI が呼べること、`gpt-5.6-sol` / `gpt-5.6-luna` が利用可能なこと)」を初回のみ追加。モデル確認は「`/model` で `gpt-5.6-sol` / effort medium への切替提案」に翻訳 | PL-002 の翻訳 + Codex固有の前提 |
 | C14 | グラレコ | 従来通り `codex exec` へ委譲する(実行環境が Codex CLI のため)。生成に失敗した場合は `grareco-input.md` を残して先へ進む(非ブロック)。この非ブロック規定は Claude版から不変 | ユーザー決定(実行環境=CLI)。CLI セッションでの画像生成可否は未確定(§1未確定c) |
+| C15 | codex 呼び出しの作法(Task 1の実測を反映) | 次の3点を SKILL.md に規定する。(1) 起動時チェックで **codex 実行ファイルの絶対パスを解決**し `state.md` の `codex-path:` に控え、judge / proxy / builder / reviewer の全呼び出しで使う — bare な `codex` はバージョンマネージャの shim 解決に失敗しうる (2) **プロンプトは stdin(`-`)で渡す**。引数で渡す場合は `< /dev/null` で **stdin を明示的に閉じる** — 閉じないと codex が標準入力を読みに行き応答を返さないまま止まる (3) `--output-schema` と `-o` には **OSネイティブ形式の絶対パス**を渡す — POSIX形式は Windows バイナリが解決できず原因不明のハングになる | Task 1 のスモークテストで3件すべて実測(S2b で shim 解決失敗、S4 初回で10分ハング→stdinクローズ+Windowsパスで成功) |
+| C16 | judge の探索抑止は隔離が主・指示が従 | judge / proxy は**必ず** `-C <一時ディレクトリ>` で起動する。プロンプトの「他のファイルを探索するな」という指示は補助であり、隔離の代替にはならない | Task 1 の S4 実行ログで、judge モデルが判定前に `Get-Content` / `Get-ChildItem` / `rg` でリポジトリを探索しようとする挙動を実測した |
 
 ## 3. リポジトリ構成
 
@@ -274,6 +278,7 @@ state.md のフォーマットは2箇所変更:
 - 担当: driver | judge | proxy | builder | reviewer | human      # ← 値を変更
 - 次のゲート: goal-gate | impl-gate | human-acceptance | none
 - proxy-session: <uuid> または -                                  # ← 新規1行(C6/C7)
+- codex-path: <codex実行ファイルの絶対パス>                        # ← 新規1行(C15)
 - 待ち: <人間待ちの場合はその内容。なければ ->
 - updated: YYYY-MM-DD HH:MM
 ```

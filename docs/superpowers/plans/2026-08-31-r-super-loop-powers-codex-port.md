@@ -634,7 +634,10 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
    - 見つかった場合: 最新の state.md を読み、「現在フェーズ / 強度 / 対象マイルストーン / 次のCheckpoint / 次のゲート」を1〜3行でユーザーに報告し、そのフェーズの手順から再開する。
    - 見つからない場合: ワークフローA(新規ゴール)を開始する。
 4. **強度確認**: goal-frame.md が存在する場合、ループ強度(MVP | 高信頼)を読み、policy.md「ループ強度」の工程表に従って以後の工程を実施する。強度未確定のままワークフローBへ進まない。
-5. **前提チェック(このゴールで初回のみ)**: `codex --version` が応答すること、`gpt-5.6-sol` と `gpt-5.6-luna` が利用可能であることを確認する。満たされない場合はユーザーに報告して停止する。
+5. **前提チェック(このゴールで初回のみ)**: 次の3点を確認し、満たされない場合はユーザーに報告して停止する。
+   - **codex 実行ファイルの絶対パスを解決して控える**。以後の judge / proxy / builder / reviewer の**全呼び出しでこの絶対パスを使う**。`codex` をそのまま(bare で)呼ぶと、バージョンマネージャの shim 解決に失敗して `cannot find binary path` になる環境がある(実測)。解決したパスは state.md の直下に `codex-path: <絶対パス>` として記録してよい。
+   - `<codexパス> --version` が応答すること。
+   - `gpt-5.6-sol` と `gpt-5.6-luna` が利用可能であること。
 
 ## ディレクトリ契約
 
@@ -673,6 +676,7 @@ docs/r-super-loop-powers/<goal-slug>/
 - 担当: driver | judge | proxy | builder | reviewer | human
 - 次のゲート: goal-gate | impl-gate | human-acceptance | none
 - proxy-session: <session id> または -
+- codex-path: <codex実行ファイルの絶対パス>
 - 待ち: <人間待ちの場合はその内容。なければ ->
 - updated: YYYY-MM-DD HH:MM
 ```
@@ -716,27 +720,34 @@ judge / proxy / builder / reviewer を呼ぶたび、および proxy との `res
 
 ### 起動の規定形
 
-サブ役はすべて `codex exec` で起動する。プロンプトは引数ではなく **stdin**(`-`)で渡す。実行の timeout は最長(600000ms)を指定し、長そうな委譲はバックグラウンドで実行する。出力は `-o` でファイルに落とし、driverがそれを読む。
+サブ役はすべて `codex exec` で起動する。以下の4点は**実測に基づく必須の作法**であり、守らないと原因の分かりにくい失敗をする(起動時チェック5とあわせて参照):
+
+1. **codex は前提チェックで解決した絶対パスで呼ぶ。** bare な `codex` は shim 解決に失敗しうる。以下の規定形の `<codexパス>` はこの絶対パスに置き換える。
+2. **プロンプトは引数ではなく stdin(`-`)で渡す。** Windows の引数長・エスケープ問題を避けられる。プロンプトを引数で渡す場合は、**stdin を明示的に閉じる**(`< /dev/null`)。閉じないと codex が標準入力を読みに行き、応答を返さないまま止まることがある。
+3. **`--output-schema` と `-o` にはネイティブの絶対パス**(Windowsなら `C:\...` 形式)を渡す。POSIX形式のパスは Windows バイナリが解決できず、これも原因不明のハングになる。
+4. 実行の timeout は最長(600000ms)を指定し、長そうな委譲はバックグラウンドで実行する。出力は `-o` でファイルに落とし、driverがそれを読む。
 
 **judge(ゲート・判断。呼び出しごとに新規セッション)**
 
 ```bash
-codex exec -m gpt-5.6-sol -c model_reasoning_effort=ultra \
+<codexパス> exec -m gpt-5.6-sol -c model_reasoning_effort=ultra \
   -C "<tmpdir>" -s read-only --skip-git-repo-check \
-  --output-schema "<このスキルのディレクトリ>/schemas/gate-verdict.json" \
-  -o "<tmpdir>/verdict.json" -
+  --output-schema "<このスキルのディレクトリの絶対パス>/schemas/gate-verdict.json" \
+  -o "<tmpdirの絶対パス>/verdict.json" -
 ```
+
+`--output-schema` と `-o` のパスは、OSネイティブ形式の絶対パスにする(Windowsなら `C:\...`)。
 
 **proxy(代理。1インスタンスを継続)**
 
 ```bash
 # 初回
-codex exec -m gpt-5.6-sol -c model_reasoning_effort=max \
+<codexパス> exec -m gpt-5.6-sol -c model_reasoning_effort=max \
   -C "<tmpdir>" -s read-only --skip-git-repo-check \
   -o "<tmpdir>/reply-1.md" - | tee "<tmpdir>/session.log"
 # session id は出力に現れる最初のUUIDを拾う
 # 往復
-codex exec resume "<session id>" -m gpt-5.6-sol -c model_reasoning_effort=max \
+<codexパス> exec resume "<session id>" -m gpt-5.6-sol -c model_reasoning_effort=max \
   -o "<tmpdir>/reply-<n>.md" "<次の入力>"
 ```
 
@@ -745,7 +756,7 @@ session id は `state.md` の `proxy-session:` に記録する。UUIDが拾え�
 **builder(実装)**
 
 ```bash
-codex exec -m gpt-5.6-luna -c model_reasoning_effort=max \
+<codexパス> exec -m gpt-5.6-luna -c model_reasoning_effort=max \
   -s workspace-write -c approval_policy=never \
   -o "<milestoneディレクトリ>/builder-report.md" -
 ```
@@ -753,7 +764,7 @@ codex exec -m gpt-5.6-luna -c model_reasoning_effort=max \
 **reviewer(高信頼のB-5のみ)**
 
 ```bash
-codex exec -m gpt-5.6-sol -c model_reasoning_effort=max \
+<codexパス> exec -m gpt-5.6-sol -c model_reasoning_effort=max \
   -s read-only --skip-git-repo-check \
   -o "<milestoneディレクトリ>/review.md" -
 ```

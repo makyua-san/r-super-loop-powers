@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["DECIDE", "ASK_HUMAN"]
+    },
+    "judgement": {
+      "type": "string",
+      "description": "DECIDE の場合の判断内容。ASK_HUMAN の場合は空文字"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "判断または人間へ回す理由の根拠"
+    },
+    "question_for_human": {
+      "type": "string",
+      "description": "ASK_HUMAN の場合の人間向け質問文。DECIDE の場合は空文字"
+    }
+  },
+  "required": ["decision", "judgement", "rationale", "question_for_human"],
+  "additionalProperties": false
+}
