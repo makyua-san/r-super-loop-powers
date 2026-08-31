@@ -40,16 +40,16 @@ C15・C16 は Task 1 のスモークテスト(2026-08-31実施、`docs/superpowe
 | C3 | 四役モデル分担 | driver = `gpt-5.6-sol` / medium(メインセッション)、judge = `gpt-5.6-sol` / **ultra**、proxy = `gpt-5.6-sol` / **max**、builder = `gpt-5.6-luna` / **max**。高信頼モードの独立レビューア reviewer = `gpt-5.6-sol` / max | ユーザー決定(C3の前4つ)。reviewer は PL-003「実装非関与の独立レビュー」を満たす自然な帰結として本設計で確定 |
 | C4 | 役名の中立化 | Claude版の Opus / Fable / Codex を、Codex版では `driver / judge / proxy / builder / reviewer / human` に置換する。**工程記号(A-0〜A-8, B-1〜B-10)・成果物名・ディレクトリ契約・ゲート保護ルールの内容は完全に同一**に保つ | Opus/Fable は Codex に存在しないモデル名であり、そのまま残すと誤解を生む |
 | C5 | サブ役の起動手段 | すべて `codex exec` サブプロセス。spawn_agent は使わない | F3/F4。feature flag 非依存で、役ごとのモデル・effort 指定が確実 |
-| C6 | 代理役の往復 | proxy は初回 `codex exec --json` で session id を取得し、以後 `codex exec resume <id> "<入力>"` で往復する。session id は state.md の `proxy-session:` に記録する | F5。Claude版 SendMessage の代替 |
+| C6 | 代理役の往復 | proxy は初回起動時に `-o` で応答をファイル出力しつつ `tee` で標準出力をログにも残し、そのログに現れる最初のUUIDを正規表現で拾って session id とする。以後 `codex exec resume <id> "<入力>"` で往復する。session id は state.md の `proxy-session:` に記録する | F5。Claude版 SendMessage の代替。`--json` 経路はTask 1で未実測のため採用しない(実測済みの tee+正規表現抽出のみ採用) |
 | C7 | セッション跨ぎの文脈復元 | `proxy-session:` が state.md に残っていれば、セッション再開後も同じ proxy を `resume` で継続できる。resume が失敗した場合のみ、goal-seed / goal-frame / hearing-log を渡して新しい proxy を起動する(Claude版の挙動にフォールバック) | Codex固有機能。Claude版で妥協していた制約の解消 |
 | C8 | ゲート判定の構造化出力 | judge の呼び出しに `--output-schema schemas/gate-verdict.json` を付け、`verdict`(PASS/REVISE/REPLAN/BLOCKED)・`根拠`・`戻り先工程`・`対象の未知` を構造化して受け取る。エスカレーション判定は `schemas/escalation-verdict.json`(`decision`: DECIDE/ASK_HUMAN)を使う | F6。自然文からの判定読み取りミスの構造的排除 |
 | C9 | judge / proxy の物理隔離 | judge と proxy は、必要文書だけをコピーした一時ディレクトリで `codex exec -C <tmpdir> -s read-only --skip-git-repo-check` として起動する | **Claude版にない新規リスクへの対策**。Claude版のAgentツールは明示的に渡した情報しか持たないが、`codex exec` は起動先のファイルシステムを読めるため、PL-009(生コード・全会話を渡さない)が素通りする。物理隔離により Claude版より強く担保される |
 | C10 | 自己承認の禁止(SK-010) | judge は毎回新規セッション。**proxy の session id を judge に `resume` することを禁止**する | 代理ブレストに参加したインスタンスによるゲート判定の防止。Codex版では「resume しない」が実装上の担保になる |
 | C11 | builder のサンドボックス | builder のみ `-s workspace-write -c approval_policy=never` で起動する。非対話実行で承認要求が発生すると停止するため | `codex exec` は非対話。承認ポリシー `on-request` のままでは詰まりうる |
 | C12 | プロンプトの受け渡し | 長文プロンプトは引数ではなく stdin(`codex exec -` へヒアドキュメント)で渡す | Windows の引数長・エスケープ問題の回避 |
-| C13 | 起動時チェックの拡張 | Claude版の4項目に「前提チェック(`codex` CLI が呼べること、`gpt-5.6-sol` / `gpt-5.6-luna` が利用可能なこと)」を初回のみ追加。モデル確認は「`/model` で `gpt-5.6-sol` / effort medium への切替提案」に翻訳 | PL-002 の翻訳 + Codex固有の前提 |
+| C13 | 起動時チェックの拡張 | Claude版の4項目に「前提チェック(`codex` CLI が呼べること、`gpt-5.6-sol` / `gpt-5.6-luna` が利用可能なこと、**driver自身による `codex exec` のネスト実行確認**)」を初回のみ追加。モデル確認は「`/model` で `gpt-5.6-sol` / effort medium への切替提案」に翻訳 | PL-002 の翻訳 + Codex固有の前提。ネスト実行確認は、設計全体が依存するS2(判定不能)を利用者の実環境で毎ゴール初回に自己検証させるための追加 |
 | C14 | グラレコ | 従来通り `codex exec` へ委譲する(実行環境が Codex CLI のため)。生成に失敗した場合は `grareco-input.md` を残して先へ進む(非ブロック)。この非ブロック規定は Claude版から不変 | ユーザー決定(実行環境=CLI)。CLI セッションでの画像生成可否は未確定(§1未確定c) |
-| C15 | codex 呼び出しの作法(Task 1の実測を反映) | 次の3点を SKILL.md に規定する。(1) 起動時チェックで **codex 実行ファイルの絶対パスを解決**し `state.md` の `codex-path:` に控え、judge / proxy / builder / reviewer の全呼び出しで使う — bare な `codex` はバージョンマネージャの shim 解決に失敗しうる (2) **プロンプトは stdin(`-`)で渡す**。引数で渡す場合は `< /dev/null` で **stdin を明示的に閉じる** — 閉じないと codex が標準入力を読みに行き応答を返さないまま止まる (3) `--output-schema` と `-o` には **OSネイティブ形式の絶対パス**を渡す — POSIX形式は Windows バイナリが解決できず原因不明のハングになる | Task 1 のスモークテストで3件すべて実測(S2b で shim 解決失敗、S4 初回で10分ハング→stdinクローズ+Windowsパスで成功) |
+| C15 | codex 呼び出しの作法(Task 1の実測を反映) | 次の4点を SKILL.md に規定する。(1) 起動時チェックで **codex 実行ファイルの絶対パスを解決**し `state.md` の `codex-path:` に控え、judge / proxy / builder / reviewer の全呼び出しで使う — bare な `codex` はバージョンマネージャの shim 解決に失敗しうる (2) **プロンプトは stdin(`-`)で渡す**。引数で渡す場合は `< /dev/null` で **stdin を明示的に閉じる** — 閉じないと codex が標準入力を読みに行き応答を返さないまま止まる (3) `--output-schema` と `-o` には **OSネイティブ形式の絶対パス**を渡す — POSIX形式は Windows バイナリが解決できず原因不明のハングになる (4) 起動時チェックで **このスキル自身のディレクトリの絶対パスを解決**し `state.md` の `skill-dir:` に控え、judge の `--output-schema` に使う — 設置場所は `CODEX_HOME` 依存で環境ごとに変わり、解決できないパスを渡すとエラーではなく原因不明のハングになる | Task 1 のスモークテストで(1)〜(3)を実測(S2b で shim 解決失敗、S4 初回で10分ハング→stdinクローズ+Windowsパスで成功)。(4)は起動時チェックがcodexパスしか解決しないという設計上の欠落への対策 |
 | C16 | judge の探索抑止は隔離が主・指示が従 | judge / proxy は**必ず** `-C <一時ディレクトリ>` で起動する。プロンプトの「他のファイルを探索するな」という指示は補助であり、隔離の代替にはならない | Task 1 の S4 実行ログで、judge モデルが判定前に `Get-Content` / `Get-ChildItem` / `rg` でリポジトリを探索しようとする挙動を実測した |
 
 ## 3. リポジトリ構成
@@ -148,7 +148,7 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 |---|---|---|---|---|
 | **driver** | gpt-5.6-sol / medium | ユーザーのメインセッション | 通常 | Opusメイン |
 | **judge** | gpt-5.6-sol / ultra | `codex exec` 新規セッション(毎回) | `-C <tmpdir> -s read-only` | ゲート・判断Fable |
-| **proxy** | gpt-5.6-sol / max | `codex exec --json` で開始 → `codex exec resume` で往復 | `-C <tmpdir> -s read-only` | 代理Fable |
+| **proxy** | gpt-5.6-sol / max | `codex exec` で開始(tee したログからsession idを正規表現で拾う) → `codex exec resume` で往復 | `-C <tmpdir> -s read-only` | 代理Fable |
 | **builder** | gpt-5.6-luna / max | `codex exec` 新規セッション | `-s workspace-write -c approval_policy=never` | Codex実装 |
 | **reviewer** | gpt-5.6-sol / max | `codex exec` 新規セッション(高信頼のB-5のみ) | 対象リポジトリの read-only | Opusサブ(opus-sub) |
 | **human** | — | — | — | 人間 |
@@ -167,11 +167,14 @@ codex exec -m gpt-5.6-sol -c model_reasoning_effort=ultra \
 proxy(初回 → 往復):
 
 ```bash
-# 初回(session id 取得のため --json を使う)
+# 初回
 codex exec -m gpt-5.6-sol -c model_reasoning_effort=max \
-  -C "<tmpdir>" -s read-only --skip-git-repo-check --json - | tee "<tmpdir>/first.jsonl"
+  -C "<tmpdir>" -s read-only --skip-git-repo-check \
+  -o "<tmpdir>/reply-1.md" - | tee "<tmpdir>/session.log"
+# session id は tee したログに現れる最初のUUIDを正規表現で拾う
+SID=$(grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "<tmpdir>/session.log" | head -1)
 # 往復
-codex exec resume "<session-id>" -m gpt-5.6-sol -c model_reasoning_effort=max \
+codex exec resume "$SID" -m gpt-5.6-sol -c model_reasoning_effort=max \
   -o "<tmpdir>/reply.md" "<次の入力>"
 ```
 
@@ -187,7 +190,7 @@ codex exec -m gpt-5.6-luna -c model_reasoning_effort=max \
 - プロンプトは stdin(`-`)で渡す(C12)
 - Bash実行の timeout は最長(600000ms)。長時間になる委譲はバックグラウンド実行
 - 出力は `-o` でファイルに落とし、driver がそれを読む
-- session id は `--json` の JSONL から拾う。取得できない場合は `codex exec resume --last` を使わず、新規 proxy 起動へフォールバックする(誤ったセッションへの接続防止)
+- session id は tee したログに現れる最初のUUIDを正規表現で拾う。取得できない場合は `codex exec resume --last` を使わず、新規 proxy 起動へフォールバックする(誤ったセッションへの接続防止)
 
 ### 4.3 judge / proxy 一時ディレクトリの内容(C9)
 
@@ -258,7 +261,7 @@ description: Use when starting or resuming a goal-engineering loop (ゴールル
 2. **モデル確認**: driver が `gpt-5.6-sol` / effort `medium` でない場合、`/model` での切替をユーザーに提案し、切替またはユーザーの明示的な続行指示があるまでフェーズ作業を開始しない(PL-002)
 3. 状態復元 — 「Globツール」→「ネイティブのファイル検索」に読み替え。それ以外不変
 4. 強度確認 — 不変
-5. **新規: 前提チェック(初回のみ)** — `codex` CLI が呼べること、`gpt-5.6-sol` と `gpt-5.6-luna` が利用可能であることを確認する。満たされない場合はユーザーに報告して停止する
+5. **新規: 前提チェック(初回のみ)** — 次を確認する。満たされない場合はユーザーに報告して停止する。(a) codex実行ファイルの絶対パスを解決して控える(以後の judge / proxy / builder / reviewer 全呼び出しで使用) (b) このスキル自身のディレクトリの絶対パスを解決して控える(以後 judge の `--output-schema` に使用。設置場所は `CODEX_HOME` 依存のため起動時に解決する) (c) `gpt-5.6-sol` と `gpt-5.6-luna` が利用可能であること (d) driver自身が `codex exec` のネスト実行を1回試行し、期待した文字列が返ることを確認する(ネスト実行はサブ役の分離という設計全体の前提であり、失敗時は続行不可として報告する)
 
 ### 5.3 ディレクトリ契約 / state.md
 
@@ -267,7 +270,7 @@ description: Use when starting or resuming a goal-engineering loop (ゴールル
 - `builder-report.md` — B-2〜B-3 の builder 自己検証報告
 - `review.md` — 高信頼の B-5 のみ。reviewer の独立レビュー結果
 
-state.md のフォーマットは2箇所変更:
+state.md のフォーマットは3箇所変更:
 
 ```markdown
 # state — <goal-slug>
@@ -278,7 +281,8 @@ state.md のフォーマットは2箇所変更:
 - 担当: driver | judge | proxy | builder | reviewer | human      # ← 値を変更
 - 次のゲート: goal-gate | impl-gate | human-acceptance | none
 - proxy-session: <uuid> または -                                  # ← 新規1行(C6/C7)
-- codex-path: <codex実行ファイルの絶対パス>                        # ← 新規1行(C15)
+- codex-path: <codex実行ファイルの絶対パス>                        # ← 新規1行(C15)。必須
+- skill-dir: <このスキルのディレクトリの絶対パス>                  # ← 新規1行(C15)。必須
 - 待ち: <人間待ちの場合はその内容。なければ ->
 - updated: YYYY-MM-DD HH:MM
 ```
@@ -308,7 +312,7 @@ proxy の resume 往復も1往復1行。driver 自身の消費は記録対象外
 | 工程 | 変更点 |
 |---|---|
 | A-0 | 不変(driver が実行) |
-| A-1a | 「Agentツール(model: fable、nameを付けて起動)」→「proxy を `codex exec --json` で起動し session id を state.md に記録」。ヒアリング指示文は一字一句そのまま。往復は `codex exec resume` |
+| A-1a | 「Agentツール(model: fable、nameを付けて起動)」→「proxy を `codex exec` で起動し、tee したログから正規表現で拾った session id を state.md に記録」。ヒアリング指示文は一字一句そのまま。往復は `codex exec resume` |
 | A-1b | MVP: proxy へ `resume` で goal-frame.md の構造を渡す / 高信頼: **proxy と同設定(sol / max、一時ディレクトリ隔離)の新規セッションを1回だけ使い捨てで起動**する(役割は「ゴールの全体責任者」であって判定ではないため judge は使わない。session id は記録せず往復もしない)。指示文は不変 |
 | A-2〜A-4 | `superpowers:brainstorming` の起動が `$superpowers:brainstorming` になる。MVP代理ブレストの相手は proxy(`resume` 往復)。ASK_HUMAN の扱いは不変 |
 | A-5 | 不変(driver が実行) |
@@ -366,7 +370,7 @@ proxy の resume 往復も1往復1行。driver 自身の消費は記録対象外
 
 1. Codex CLI セッションで `$r-super-loop-powers:r-super-loop-powers` が起動し、起動時チェック5項目が実行される
 2. driver が `gpt-5.6-sol` / medium でない場合に `/model` 切替提案が出て、承諾か明示的続行までフェーズ作業が始まらない
-3. proxy が `codex exec --json` で起動され、session id が state.md の `proxy-session:` に記録され、`resume` で往復できる
+3. proxy が `codex exec` で起動され、tee したログから拾った session id が state.md の `proxy-session:` に記録され、`resume` で往復できる
 4. A-1a のヒアリング質問が人間へそのまま提示され、回答が hearing-log.md に記録される
 5. judge が一時ディレクトリで起動され、**対象リポジトリのファイルを読めない**
 6. judge の判定が `gate-verdict.json` スキーマに適合したJSONで返り、`goal-gate-decision.md` / `gate-decision.md` に Claude版と同じ見出し構造で保存される
@@ -385,7 +389,7 @@ proxy の resume 往復も1往復1行。driver 自身の消費は記録対象外
 |---|---|---|
 | S1 | ローカルパスで `codex plugin marketplace add` → `codex plugin add` → スキルが `$r-super-loop-powers:r-super-loop-powers` で見える | marketplace.json のスキーマを実物に合わせて修正(§1未確定a) |
 | S2 | **親Codexセッションの中から `codex exec` を起動できる**(ネスト実行がサンドボックス・承認で詰まらない) | 詰まる場合は driver 自身が builder を兼ねる案へ設計変更。**この検証を最優先で行う** |
-| S3 | `codex exec --json` から session id を拾い、`resume` で往復できる | 拾えない場合は C6/C7 を破棄し、Claude版と同じ「記録から再構築」方式へ戻す |
+| S3 | `codex exec` の出力を tee したログから session id を正規表現で拾い、`resume` で往復できる | 拾えない場合は C6/C7 を破棄し、Claude版と同じ「記録から再構築」方式へ戻す |
 | S4 | `--output-schema` で PASS/REVISE の構造化出力が返る | 返らない場合は C8 を破棄し、自然文+パースへ戻す |
 | S5 | `-C <tmpdir>` 隔離下の judge が対象リポジトリを読めない | 読めてしまう場合は、プロンプトでの禁止指示のみに後退し、その旨を policy.md に明記 |
 | S6 | `codex exec` セッションで画像生成ができる(グラレコ) | できない場合は grareco-input.md のみ生成する運用に確定(非ブロック規定は既存) |

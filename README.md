@@ -76,8 +76,12 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 
 ## リポジトリ構成
 
-- `.claude-plugin/` — プラグインマニフェスト・マーケットプレイス定義
-- `skills/r-super-loop-powers/` — SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種)
+- `.claude-plugin/` — Claude版プラグインマニフェスト・マーケットプレイス定義
+- `skills/r-super-loop-powers/` — Claude版 SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本)
+- `.codex-plugin/` — Codex版プラグインマニフェスト(`plugin.json`)
+- `.agents/plugins/` — Codex版マーケットプレイス定義(`marketplace.json`)
+- `skills-codex/r-super-loop-powers/` — Codex版 SKILL.md / policy.md / schemas/(ゲート判定・エスカレーション判定の構造化出力スキーマ) / templates/(9種、`skills/` からの複写)
+- `scripts/` — `sync-templates.ps1`(templatesの複写・一致検証)
 - `docs/superpowers/specs/` — 設計仕様書
 - `docs/superpowers/plans/` — 実装計画
 
@@ -89,6 +93,12 @@ Claude Code 版と同じゴールループを Codex CLI 単体で回すための
 
 設計仕様: `docs/superpowers/specs/2026-08-31-r-super-loop-powers-codex-port-design.md`
 
+### 導入時の注意(導入コマンドを実行する前にお読みください)
+
+- **インストール先は `CODEX_HOME` に従います。** 環境変数 `CODEX_HOME` が設定されている場合、`~/.codex/config.toml` ではなくそちらの config.toml に登録されます。普段 Codex を起動している環境で導入コマンドを実行してください。
+- `codex plugin marketplace add` にローカルパスを渡すと、そのパスに対して `trust_level = "trusted"` が config.toml へ自動追加されることがあります(実測)。
+- 取り消しは `codex plugin remove r-super-loop-powers@r-super-loop-powers-marketplace` と `codex plugin marketplace remove r-super-loop-powers-marketplace` です。`trust_level` のエントリはこれらでは消えない可能性があります。誤った `CODEX_HOME` に導入した場合、きれいには戻せない可能性があります。
+
 ### 導入
 
 ```bash
@@ -96,15 +106,20 @@ codex plugin marketplace add makyua-san/r-super-loop-powers
 codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 ```
 
+**この GitHub 形式の導入コマンドは未検証です。** 実測できたのはローカルパス形式のみです。GitHub形式で失敗する場合は、リポジトリをクローンしてローカルパスで登録してください(ローカルパス形式はスモークテストS1で実測済み)。
+
+```bash
+codex plugin marketplace add "<クローンしたリポジトリの絶対パス>"
+codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
+```
+
 起動: Codex セッション内で `$r-super-loop-powers`
 
 スキル名は `$` を入力すると補完候補に出ます。環境によっては `r-super-loop-powers:r-super-loop-powers` の形(プラグイン名:スキル名)で表示されることがあるので、実際に表示された名前を選んでください。
 
-### 導入時の注意
+### 未検証事項: ネスト実行(S2)
 
-- **インストール先は `CODEX_HOME` に従います。** 環境変数 `CODEX_HOME` が設定されている場合、`~/.codex/config.toml` ではなくそちらの config.toml に登録されます。普段 Codex を起動している環境で導入コマンドを実行してください。
-- `codex plugin marketplace add` にローカルパスを渡すと、そのパスに対して `trust_level = "trusted"` が config.toml へ自動追加されることがあります(実測)。
-- 取り消しは `codex plugin remove r-super-loop-powers@r-super-loop-powers-marketplace` と `codex plugin marketplace remove r-super-loop-powers-marketplace` です。`trust_level` のエントリはこれらでは消えない可能性があります。
+このプラグインの設計は、親Codexセッションの中からサブ役(judge / proxy / builder / reviewer)を `codex exec` でネスト実行できることに全面的に依存していますが、この動作(S2)は検証環境の固有事情により**判定不能**のままです。導入後、実ターミナルで一度確認することを推奨します。プローブコマンドは `docs/superpowers/notes/2026-08-31-codex-smoke.md` の「ユーザーの実ターミナルでの再確認が必要な項目」にあります(SKILL.mdの起動時チェックでも毎ゴール初回に自動確認されます)。
 
 ### 役とモデル
 
@@ -140,12 +155,13 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 - [ ] 9. proxy がユーザー固有判断の問いに `ASK_HUMAN:` を返し、それだけが人間へ提示される
 - [ ] 10. goal-plan.md にマイルストーン一覧と Checkpoint 印、「主要設計判断(proxy代理回答による)」欄がある
 - [ ] 11. A-6 で judge が一時ディレクトリで起動し、`gate-verdict.json` 準拠のJSONを返す
-- [ ] 12. A-8 の承認提示が WHAT レベル(spec/plan は参照リンクのみ)である
-- [ ] 13. B-2 で builder が `gpt-5.6-luna` / max で起動し、`builder-report.md` に自己検証報告を残す
-- [ ] 14. builder が git コミットをしていない
-- [ ] 15. decisions.md が4区分で作成される
-- [ ] 16. B-6 の PASS 後、非Checkpointマイルストーンは人間承認なしで次のB-1へ進む
-- [ ] 17. Checkpoint到達時のみ human-report.md が作られ、受け入れテストが依頼される
-- [ ] 18. proxy の session id が judge に `resume` されていない(call-log.md と実行履歴で確認)
-- [ ] 19. call-log.md が `judge|proxy|builder|reviewer` の4語のみで記録されている
-- [ ] 20. Checkpoint の ACCEPT 後に確定コミットが行われ、retro.md が作成される
+- [ ] 12. judge が一時ディレクトリ外の対象リポジトリのファイルを読めない(例: README.md 等の読み取りが FAILED になる。C9 の隔離効果の確認)
+- [ ] 13. A-8 の承認提示が WHAT レベル(spec/plan は参照リンクのみ)である
+- [ ] 14. B-2 で builder が `gpt-5.6-luna` / max で起動し、`builder-report.md` に自己検証報告を残す
+- [ ] 15. builder が git コミットをしていない
+- [ ] 16. decisions.md が4区分で作成される
+- [ ] 17. B-6 の PASS 後、非Checkpointマイルストーンは人間承認なしで次のB-1へ進む
+- [ ] 18. Checkpoint到達時のみ human-report.md が作られ、受け入れテストが依頼される
+- [ ] 19. proxy の session id が judge に `resume` されていない(call-log.md と実行履歴で確認)
+- [ ] 20. call-log.md が `judge|proxy|builder|reviewer` の4語のみで記録されている
+- [ ] 21. Checkpoint の ACCEPT 後に確定コミットが行われ、retro.md が作成される

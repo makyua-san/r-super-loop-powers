@@ -9,13 +9,13 @@
 | S3 | session id の取得と `resume` による往復 | OK | `SID=01a05855-19d3-7b93-a570-ddfca8ce6f7d`。resume 後の応答は `ALPHA`(期待どおり) | C6/C7 採用 |
 | S4 | `--output-schema` による構造化出力 | OK(再試行で成功。詳細は下記「実測メモ」) | 初回は10分タイムアウト(exit code 143、出力なし)。stdin明示クローズ(`< /dev/null`)+Windows形式絶対パスの両対策を入れた再試行で `verdict=REVISE` のJSONが標準出力と `-o` の両方に返った(team-leadの独立再実行でも同様に確認) | C8採用(構造化出力) |
 | S5 | `-C <tmpdir>` 隔離下でのリポジトリ読み取り | OK(望ましい結果) | 作業ディレクトリには `goal-frame.md` のみが見え、`README.md` の読み取りは明示的に FAILED(access denied) | 物理隔離のみで PL-009 を担保できる見込み。念のため探索禁止指示も併用する |
-| S6 | `codex exec` セッションでの画像生成 | **判定不能**(実ターミナルでの検証が必要) | 未実行(team-lead 裁定により、S2と同じランタイムホーム/サンドボックス問題に当たる可能性が高いため見送り) | グラレコは grareco-input.md のみ生成する運用を暫定採用。実ターミナルでの検証結果を待って再判断 |
+| S6 | `codex exec` セッションでの画像生成 | **判定不能**(実ターミナルでの検証が必要) | 未実行(team-lead 裁定により、S2と同じランタイムホーム/サンドボックス問題に当たる可能性が高いため見送り) | S6 判定不能。生成は引き続き試行するが失敗は非ブロック(C14のまま。grareco-input.md は必ず残す)。実ターミナルでの検証結果を待って再判断 |
 
 ## S1 について
 
 S1(marketplace add → plugin add → スキル可視)は Task 5 で実施済み。結果は以下のとおり(詳細は `.superpowers/sdd/2026-08-31-r-super-loop-powers-codex-port/task-5-report.md`)。
 
-- **marketplace.json のスキーマ修正**: 不要だった。`.agents/plugins/marketplace.json` はブリーフ記載の `local` 形式のまま、`codex plugin marketplace add "C:/Users/makyu/Desktop/project/r-super-loop-powers" --json` が一度で成功した(`alreadyAdded: false`)。スキーマエラーは発生しなかった。
+- **marketplace.json のスキーマ修正**: 不要だった。`.agents/plugins/marketplace.json` はブリーフ記載の `local` 形式のまま、`codex plugin marketplace add "C:/Users/makyu/Desktop/project/r-super-loop-powers" --json` が一度で成功した(`alreadyAdded: false`)。スキーマエラーは発生しなかった。**local 形式でのみ確認。GitHub ソース形式(`owner/repo`)は未検証。**
 - **`plugin list` の結果**: `codex plugin add "r-super-loop-powers@r-super-loop-powers-marketplace"` の実行後、`plugin list` は `r-super-loop-powers@r-super-loop-powers-marketplace  installed, enabled  0.1.0` を表示した。config.toml(実体は `CODEX_HOME` が指すファイル。`~/.codex/config.toml` ではない環境だった)にも `[plugins."r-super-loop-powers@r-super-loop-powers-marketplace"] enabled = true` が追加されたことを確認した。
 - **スキル可視化の結果**: `codex exec` で「`r-super` で始まるスキル名をすべて挙げよ」と問うたところ、`r-super-loop-powers` が唯一のマッチとして返った。ただし出力は想定していた完全修飾ID `r-super-loop-powers:r-super-loop-powers`(`plugin:skill` 形式)ではなく、**素のスキル名 `r-super-loop-powers` のみ**だった(モデル回答本文・末尾サマリ行の両方で同一)。NONE ではないため再実行はしていない。
 - **副作用**: `codex plugin marketplace add` にローカルパスを渡したところ、`[projects.'...r-super-loop-powers']` に `trust_level = "trusted"` が config.toml へ自動追加された。原因は未確認の推測(ローカルパスソースのマーケットプレイス追加時にソースパスをプロジェクトとして自動信頼登録する挙動と見られる)。`codex plugin remove` / `marketplace remove` では消えない可能性がある。
@@ -109,4 +109,4 @@ ls -la "$IMG"
 - Task 2〜6: S2 が実ターミナルで FAILED だった場合、サブ役を `codex exec` で分離する設計そのものが成立しないため、全タスクの前提が変わる。S2 の結果が出るまでは、この前提が未確定であることを了解の上で進める。
 - Task 4(SKILL.md): 全ての `codex exec` 呼び出しで stdin を明示的に閉じる(またはヒアドキュメントで与える)こと、および `--output-schema` / `-o` には**Windows形式の絶対パス**を渡すことを規定する。POSIXパスは Windows バイナリが解決できない(S4で実測。これを怠ると原因不明のままタイムアウトする)。
 - Task 4(SKILL.md): judge / proxy は必ず `-C <一時ディレクトリ>` で起動する。プロンプトの探索禁止指示は補助であり、隔離の代替にはならない(S4実行時に探索行動を実測)。
-- S6 未実行のため、グラレコ関連タスク(該当があれば)は「grareco-input.md のみ生成」を暫定の採用方針とし、実ターミナル検証の結果次第で見直す。
+- S6 未実行のため判定不能。グラレコ関連タスク(該当があれば)は C14 の非ブロック規定どおり生成を試行し、失敗時のみ grareco-input.md を残して先へ進む方針とし、実ターミナル検証の結果次第で見直す。

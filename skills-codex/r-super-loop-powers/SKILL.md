@@ -29,10 +29,12 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
    - 見つかった場合: 最新の state.md を読み、「現在フェーズ / 強度 / 対象マイルストーン / 次のCheckpoint / 次のゲート」を1〜3行でユーザーに報告し、そのフェーズの手順から再開する。
    - 見つからない場合: ワークフローA(新規ゴール)を開始する。
 4. **強度確認**: goal-frame.md が存在する場合、ループ強度(MVP | 高信頼)を読み、policy.md「ループ強度」の工程表に従って以後の工程を実施する。強度未確定のままワークフローBへ進まない。
-5. **前提チェック(このゴールで初回のみ)**: 次の3点を確認し、満たされない場合はユーザーに報告して停止する。
-   - **codex 実行ファイルの絶対パスを解決して控える**。以後の judge / proxy / builder / reviewer の**全呼び出しでこの絶対パスを使う**。`codex` をそのまま(bare で)呼ぶと、バージョンマネージャの shim 解決に失敗して `cannot find binary path` になる環境がある(実測)。解決したパスは state.md の直下に `codex-path: <絶対パス>` として記録してよい。
+5. **前提チェック(このゴールで初回のみ)**: 次の5点を確認し、満たされない場合はユーザーに報告して停止する。
+   - **codex 実行ファイルの絶対パスを解決して控える**。以後の judge / proxy / builder / reviewer の**全呼び出しでこの絶対パスを使う**。`codex` をそのまま(bare で)呼ぶと、バージョンマネージャの shim 解決に失敗して `cannot find binary path` になる環境がある(実測)。解決したパスは state.md の直下に `codex-path: <絶対パス>` として記録する。
    - `<codexパス> --version` が応答すること。
+   - **このスキル自身のディレクトリの絶対パスを解決して控える**。設置場所は `CODEX_HOME` に依存し環境ごとに異なるため、起動時チェックで都度解決する。以後 judge の `--output-schema` の指定にこの絶対パスを使う。解決したパスは state.md の直下に `skill-dir: <絶対パス>` として記録する。
    - `gpt-5.6-sol` と `gpt-5.6-luna` が利用可能であること。
+   - **ネスト実行の確認**: driver 自身が `<codexパス> exec` を1回起動し、その指示の中でさらに `<codexパス> exec`(軽量モデル・低effort)を呼び出させ、期待した文字列が返ることを確認する。失敗した場合は「このプラグインの設計はサブ役の分離(codex execのネスト実行)に依存しているため続行できない」旨をユーザーに報告して停止する。
 
 ## ディレクトリ契約
 
@@ -72,6 +74,7 @@ docs/r-super-loop-powers/<goal-slug>/
 - 次のゲート: goal-gate | impl-gate | human-acceptance | none
 - proxy-session: <session id> または -
 - codex-path: <codex実行ファイルの絶対パス>
+- skill-dir: <このスキルのディレクトリの絶対パス>
 - 待ち: <人間待ちの場合はその内容。なければ ->
 - updated: YYYY-MM-DD HH:MM
 ```
@@ -140,9 +143,10 @@ judge / proxy / builder / reviewer を呼ぶたび、および proxy との `res
 <codexパス> exec -m gpt-5.6-sol -c model_reasoning_effort=max \
   -C "<tmpdir>" -s read-only --skip-git-repo-check \
   -o "<tmpdir>/reply-1.md" - | tee "<tmpdir>/session.log"
-# session id は出力に現れる最初のUUIDを拾う
+# session id は tee したログに現れる最初のUUIDを正規表現で拾う
+SID=$(grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "<tmpdir>/session.log" | head -1)
 # 往復
-<codexパス> exec resume "<session id>" -m gpt-5.6-sol -c model_reasoning_effort=max \
+<codexパス> exec resume "$SID" -m gpt-5.6-sol -c model_reasoning_effort=max \
   -o "<tmpdir>/reply-<n>.md" "<次の入力>"
 ```
 
@@ -221,7 +225,7 @@ session id を state.md の `proxy-session:` に記録する。driverは質問�
 
 **A-6 Goal Gate(judge・新規セッション)**
 前提確認: goal-frame.md と submission が存在すること。
-共通契約に従い、一時ディレクトリに goal-frame.md 全文 + submission 全文 + assumptions.md の未検証仮定をコピーして judge を `--output-schema schemas/gate-verdict.json` 付きで起動する。判定観点(適合性・残存未知の許容性・仮定の事実扱い・否定リスト)に加えて「**Checkpoint配置が『人間の受け入れテスト1回でE2E価値を評価できる』単位か**」で「この計画で元の目的を達成できるか」を判定させる。品質の細部ではなくゴール整合性を中心に見る。
+共通契約に従い、一時ディレクトリに goal-frame.md 全文 + submission 全文 + assumptions.md の未検証仮定をコピーして judge を `--output-schema`(規定形のとおり `<スキルのディレクトリの絶対パス>/schemas/gate-verdict.json`)付きで起動する。判定観点(適合性・残存未知の許容性・仮定の事実扱い・否定リスト)に加えて「**Checkpoint配置が『人間の受け入れテスト1回でE2E価値を評価できる』単位か**」で「この計画で元の目的を達成できるか」を判定させる。品質の細部ではなくゴール整合性を中心に見る。
 返ったJSONを `goal-gate-decision.md`(goal直下)へ整形保存し、call-logに記録する。
 
 **A-7 差し戻し処理(driver)**
@@ -246,7 +250,7 @@ judge PASS後、人間に提示して実装へ進む承認を得る。
 - **高信頼**: subagent-driven developmentと同じプロセス構造でタスク分解し、個別に委譲する。
 
 ```bash
-codex exec -m gpt-5.6-luna -c model_reasoning_effort=max \
+<codexパス> exec -m gpt-5.6-luna -c model_reasoning_effort=max \
   -s workspace-write -c approval_policy=never \
   -o "<milestoneディレクトリ>/builder-report.md" -
 ```
@@ -262,7 +266,7 @@ codex exec -m gpt-5.6-luna -c model_reasoning_effort=max \
 - 実装・設計上の主要判断は随時 `milestones/<n>-<名前>/decisions.md`(`templates/decisions.md` の形式)に追記する(要件由来とAgent仮説を区別する)。
 
 **B-4 エスカレーション(必要時のみ)**
-policy.md の発火条件(否定リスト該当・ユーザー固有判断・Solution分岐・低確信を含む10件)を検出したら、`templates/escalation.md` の1〜6を整形し、一時ディレクトリに goal-frame.md + 1〜6 + 関連する未検証仮定(assumptions.mdの該当行、あれば) + hearing-log.md の関連部分(あれば)をコピーして judge を `--output-schema schemas/escalation-verdict.json` 付きで起動する。judgeは **DECIDE**(判断+根拠)または **ASK_HUMAN**(人間向け質問文)を返す。返った内容を7(判定)欄へ整形して記入する。ASK_HUMANの場合はdriverが人間へ提示し、回答を hearing-log.md に追記してから続行する。文書を milestone ディレクトリに `escalation-<連番>.md` として保存し、call-logに記録。
+policy.md の発火条件(否定リスト該当・ユーザー固有判断・Solution分岐・低確信を含む10件)を検出したら、`templates/escalation.md` の1〜6を整形し、一時ディレクトリに goal-frame.md + 1〜6 + 関連する未検証仮定(assumptions.mdの該当行、あれば) + hearing-log.md の関連部分(あれば)をコピーして judge を `--output-schema`(規定形のとおり `<スキルのディレクトリの絶対パス>/schemas/escalation-verdict.json`)付きで起動する。judgeは **DECIDE**(判断+根拠)または **ASK_HUMAN**(人間向け質問文)を返す。返った内容を7(判定)欄へ整形して記入する。ASK_HUMANの場合はdriverが人間へ提示し、回答を hearing-log.md に追記してから続行する。文書を milestone ディレクトリに `escalation-<連番>.md` として保存し、call-logに記録。
 
 **B-5 レビューとSubmission作成(driver)**
 - **MVP**: driverが**セルフチェック**(goal-frame承認基準との対応・残存未知の列挙・未検証仮定の確認)を行い、`decisions.md` の4区分(要件由来 / Agent仮説HOW / 低確信 / 発見された未知)を確定させ、`templates/approval-submission.md` に従い `milestones/<n>-<名前>/submission.md` を作成する(判断記録欄から decisions.md を参照)。
@@ -271,7 +275,7 @@ policy.md の発火条件(否定リスト該当・ユーザー固有判断・Sol
 
 **B-6 Implementation Gate(judge・新規セッション)**
 前提確認: submission.md が存在し、検証証拠と残存未知リストが含まれること。
-共通契約に従い、一時ディレクトリに goal-frame.md + マイルストーン定義 + submission.md + assumptions.md の未検証仮定をコピーして judge を `--output-schema schemas/gate-verdict.json` 付きで起動し、判定観点で「このマイルストーンのゴールを満たし、残存未知が許容可能か」を判定させる。返ったJSONを `gate-decision.md` へ整形保存、call-logに記録。
+共通契約に従い、一時ディレクトリに goal-frame.md + マイルストーン定義 + submission.md + assumptions.md の未検証仮定をコピーして judge を `--output-schema`(規定形のとおり `<スキルのディレクトリの絶対パス>/schemas/gate-verdict.json`)付きで起動し、判定観点で「このマイルストーンのゴールを満たし、残存未知が許容可能か」を判定させる。返ったJSONを `gate-decision.md` へ整形保存、call-logに記録。
 - PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)→ 中間コミット → state.md を次マイルストーンへ更新し、**人間承認なしで次のB-1へ**
 - PASS + Checkpointマイルストーン(MVP)または高信頼 → state.md を human-acceptance に更新し、B-7へ
 - REVISE / REPLAN → `return_to` と `target_unknowns` に従って差し戻す(人間へは出さない)
