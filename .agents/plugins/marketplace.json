@@ -1,0 +1,16 @@
+{
+  "name": "r-super-loop-powers-marketplace",
+  "interface": {
+    "displayName": "R Super Loop Powers"
+  },
+  "plugins": [
+    {
+      "name": "r-super-loop-powers",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
