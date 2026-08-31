@@ -258,7 +258,12 @@ description: Use when starting or resuming a goal-engineering loop (ゴールル
 
 ### 5.3 ディレクトリ契約 / state.md
 
-ディレクトリ構造は完全に同一。state.md のフォーマットのみ2箇所変更:
+ディレクトリ構造は Claude版と同一。ただしマイルストーンディレクトリに、`codex exec -o` の出力先として2ファイルが**加わる**(既存成果物の変更ではなく追加):
+
+- `builder-report.md` — B-2〜B-3 の builder 自己検証報告
+- `review.md` — 高信頼の B-5 のみ。reviewer の独立レビュー結果
+
+state.md のフォーマットは2箇所変更:
 
 ```markdown
 # state — <goal-slug>
