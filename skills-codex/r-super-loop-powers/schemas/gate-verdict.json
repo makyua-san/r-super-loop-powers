@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "REVISE", "REPLAN", "BLOCKED"]
+    },
+    "rationale": {
+      "type": "string",
+      "description": "判定の根拠。5行以内。goal-frameの承認基準・残存未知の許容性・仮定の事実扱い・否定リスト違反の観点で書く"
+    },
+    "return_to": {
+      "type": "string",
+      "description": "REVISE / REPLAN の場合の戻り先工程(例: A-4計画, B-2実装)。該当しない場合は空文字"
+    },
+    "target_unknowns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "戻り先で解消すべき未知・仮定。該当しない場合は空配列"
+    },
+    "blocking_questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "BLOCKED の場合に人間へ提示する質問。該当しない場合は空配列"
+    }
+  },
+  "required": ["verdict", "rationale", "return_to", "target_unknowns", "blocking_questions"],
+  "additionalProperties": false
+}
