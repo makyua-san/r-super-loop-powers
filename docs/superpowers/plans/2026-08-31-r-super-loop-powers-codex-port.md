@@ -1075,9 +1075,9 @@ git commit -m "feat: Codexプラグイン骨格(.codex-plugin + marketplace)と�
 
 - [ ] **Step 1: README にCodex版セクションを追記する**
 
-`README.md` の末尾に次を追加する。
+`README.md` の末尾に次を追加する(外側は4バックティックのフェンス。内側の3バックティックのブロックも含めてすべてREADMEへ書く)。
 
-```markdown
+````markdown
 ---
 
 ## Codex版(Codex CLI)
@@ -1138,7 +1138,7 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 - [ ] 18. proxy の session id が judge に `resume` されていない(call-log.md と実行履歴で確認)
 - [ ] 19. call-log.md が `judge|proxy|builder|reviewer` の4語のみで記録されている
 - [ ] 20. Checkpoint の ACCEPT 後に確定コミットが行われ、retro.md が作成される
-```
+````
 
 - [ ] **Step 2: S1 の結果をスモーク記録に追記する**
 
