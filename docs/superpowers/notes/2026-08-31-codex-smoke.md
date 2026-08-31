@@ -13,7 +13,12 @@
 
 ## S1 について
 
-S1(marketplace add → plugin add → スキル可視)は、プラグイン骨格ができる Task 5 で実施する。
+S1(marketplace add → plugin add → スキル可視)は Task 5 で実施済み。結果は以下のとおり(詳細は `.superpowers/sdd/2026-08-31-r-super-loop-powers-codex-port/task-5-report.md`)。
+
+- **marketplace.json のスキーマ修正**: 不要だった。`.agents/plugins/marketplace.json` はブリーフ記載の `local` 形式のまま、`codex plugin marketplace add "C:/Users/makyu/Desktop/project/r-super-loop-powers" --json` が一度で成功した(`alreadyAdded: false`)。スキーマエラーは発生しなかった。
+- **`plugin list` の結果**: `codex plugin add "r-super-loop-powers@r-super-loop-powers-marketplace"` の実行後、`plugin list` は `r-super-loop-powers@r-super-loop-powers-marketplace  installed, enabled  0.1.0` を表示した。config.toml(実体は `CODEX_HOME` が指すファイル。`~/.codex/config.toml` ではない環境だった)にも `[plugins."r-super-loop-powers@r-super-loop-powers-marketplace"] enabled = true` が追加されたことを確認した。
+- **スキル可視化の結果**: `codex exec` で「`r-super` で始まるスキル名をすべて挙げよ」と問うたところ、`r-super-loop-powers` が唯一のマッチとして返った。ただし出力は想定していた完全修飾ID `r-super-loop-powers:r-super-loop-powers`(`plugin:skill` 形式)ではなく、**素のスキル名 `r-super-loop-powers` のみ**だった(モデル回答本文・末尾サマリ行の両方で同一)。NONE ではないため再実行はしていない。
+- **副作用**: `codex plugin marketplace add` にローカルパスを渡したところ、`[projects.'...r-super-loop-powers']` に `trust_level = "trusted"` が config.toml へ自動追加された。原因は未確認の推測(ローカルパスソースのマーケットプレイス追加時にソースパスをプロジェクトとして自動信頼登録する挙動と見られる)。`codex plugin remove` / `marketplace remove` では消えない可能性がある。
 
 ## 検証環境の制約
 

@@ -301,5 +301,5 @@ acceptance.md に ACCEPT があることを確認してから、Checkpoint範囲
 ## 例外・停止時の扱い
 
 - どのフェーズでも、人間の入力が必要になったら state.md の「待ち」に内容を書いてから停止する。
-- セッションが切れても、次回 `$r-super-loop-powers:r-super-loop-powers` 起動時に state.md から再開できる(NFR-04)。`proxy-session:` に session id が残っていれば `codex exec resume` で同じ proxy を継続する。resume が失敗した場合のみ、goal-seed / goal-frame / hearing-log を渡して新しい proxy を起動する(記録がある限り文脈は復元できる)。
+- セッションが切れても、次回 `$r-super-loop-powers`(環境によっては `$r-super-loop-powers:r-super-loop-powers`)起動時に state.md から再開できる(NFR-04)。`proxy-session:` に session id が残っていれば `codex exec resume` で同じ proxy を継続する。resume が失敗した場合のみ、goal-seed / goal-frame / hearing-log を渡して新しい proxy を起動する(記録がある限り文脈は復元できる)。
 - このスキルは Superpowers・gstack等の他スキルのファイルを読むことはあっても、**変更してはならない**(SK-001)。

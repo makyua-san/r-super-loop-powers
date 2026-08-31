@@ -80,3 +80,72 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - `skills/r-super-loop-powers/` — SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種)
 - `docs/superpowers/specs/` — 設計仕様書
 - `docs/superpowers/plans/` — 実装計画
+
+---
+
+## Codex版(Codex CLI)
+
+Claude Code 版と同じゴールループを Codex CLI 単体で回すための移植版です。工程(A-0〜A-8 / B-1〜B-10)・成果物契約・ゲート規律は Claude 版と同一で、モデル運用層だけが異なります。
+
+設計仕様: `docs/superpowers/specs/2026-08-31-r-super-loop-powers-codex-port-design.md`
+
+### 導入
+
+```bash
+codex plugin marketplace add makyua-san/r-super-loop-powers
+codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
+```
+
+起動: Codex セッション内で `$r-super-loop-powers`
+
+スキル名は `$` を入力すると補完候補に出ます。環境によっては `r-super-loop-powers:r-super-loop-powers` の形(プラグイン名:スキル名)で表示されることがあるので、実際に表示された名前を選んでください。
+
+### 導入時の注意
+
+- **インストール先は `CODEX_HOME` に従います。** 環境変数 `CODEX_HOME` が設定されている場合、`~/.codex/config.toml` ではなくそちらの config.toml に登録されます。普段 Codex を起動している環境で導入コマンドを実行してください。
+- `codex plugin marketplace add` にローカルパスを渡すと、そのパスに対して `trust_level = "trusted"` が config.toml へ自動追加されることがあります(実測)。
+- 取り消しは `codex plugin remove r-super-loop-powers@r-super-loop-powers-marketplace` と `codex plugin marketplace remove r-super-loop-powers-marketplace` です。`trust_level` のエントリはこれらでは消えない可能性があります。
+
+### 役とモデル
+
+| 役 | モデル / effort | 担当 |
+|---|---|---|
+| driver | gpt-5.6-sol / medium | メインセッション。進行管理と成果物作成 |
+| proxy | gpt-5.6-sol / max | ヒアリング駆動・Goal Frame・MVPの代理ブレスト回答 |
+| judge | gpt-5.6-sol / ultra | 承認ゲート・エスカレーション判定・REJECT後の戻り先決定 |
+| builder | gpt-5.6-luna / max | 実装と自己検証 |
+| reviewer | gpt-5.6-sol / max | 高信頼強度の独立レビュー(B-5) |
+
+サブ役はすべて `codex exec` サブプロセスとして起動され、proxy のみ `codex exec resume` で往復します。judge と proxy は必要文書だけをコピーした一時ディレクトリで起動し、対象プロジェクトの生コードを渡しません(PL-009)。
+
+### Claude版との差分
+
+- 役名: Opus / Fable / Codex → driver / judge / proxy / builder / reviewer
+- ゲート判定は `schemas/gate-verdict.json` による構造化出力(PASS / REVISE / REPLAN / BLOCKED)
+- 代理役の文脈は `state.md` の `proxy-session:` に記録され、**セッションを跨いで復元できる**(Claude版にはない)
+- テンプレート9枚は Claude 版と同一。原本は `skills/r-super-loop-powers/templates/` で、`scripts/sync-templates.ps1` が `skills-codex/` 側へ複写する
+
+### E2Eチェックリスト(Codex版)
+
+新規の小規模プロジェクトで MVP 強度・中間マイルストーン1つ以上・Checkpoint1つ以上を完走して確認する。
+
+- [ ] 1. `$r-super-loop-powers` で起動し、起動時チェック5項目が実行される
+- [ ] 2. driver が `gpt-5.6-sol` / medium でない場合に `/model` 切替提案が出て、承諾か明示的続行までフェーズ作業が始まらない
+- [ ] 3. `docs/r-super-loop-powers/<goal-slug>/` 一式が作成される(state.md / goal-seed.md / hearing-log.md / assumptions.md / call-log.md)
+- [ ] 4. A-1a で proxy が起動し、session id が `state.md` の `proxy-session:` に記録される
+- [ ] 5. A-1a の質問がそのまま人間へ提示され、回答が hearing-log.md に記録され、`codex exec resume` で往復する
+- [ ] 6. proxy が HOW を質問せず、無自覚の既知(暗黙の前提・避けたい体験・優先順位)を掘る質問を返す
+- [ ] 7. A-1b で goal-frame.md が生成され、人間がループ強度を確定する
+- [ ] 8. A-2〜A-4 で `$superpowers:brainstorming` が起動し、質問の相手が proxy になる
+- [ ] 9. proxy がユーザー固有判断の問いに `ASK_HUMAN:` を返し、それだけが人間へ提示される
+- [ ] 10. goal-plan.md にマイルストーン一覧と Checkpoint 印、「主要設計判断(proxy代理回答による)」欄がある
+- [ ] 11. A-6 で judge が一時ディレクトリで起動し、`gate-verdict.json` 準拠のJSONを返す
+- [ ] 12. A-8 の承認提示が WHAT レベル(spec/plan は参照リンクのみ)である
+- [ ] 13. B-2 で builder が `gpt-5.6-luna` / max で起動し、`builder-report.md` に自己検証報告を残す
+- [ ] 14. builder が git コミットをしていない
+- [ ] 15. decisions.md が4区分で作成される
+- [ ] 16. B-6 の PASS 後、非Checkpointマイルストーンは人間承認なしで次のB-1へ進む
+- [ ] 17. Checkpoint到達時のみ human-report.md が作られ、受け入れテストが依頼される
+- [ ] 18. proxy の session id が judge に `resume` されていない(call-log.md と実行履歴で確認)
+- [ ] 19. call-log.md が `judge|proxy|builder|reviewer` の4語のみで記録されている
+- [ ] 20. Checkpoint の ACCEPT 後に確定コミットが行われ、retro.md が作成される
