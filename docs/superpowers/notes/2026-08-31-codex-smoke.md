@@ -7,7 +7,7 @@
 |---|---|---|---|---|
 | S2 | 親Codexセッション内からの `codex exec` ネスト実行 | **判定不能**(実ターミナルでの検証が必要) | 4回の試行(初回/S2a/S2b/S2c)すべてが異なるレイヤーで失敗。最終的にはネスト側 codex プロセスの `orca\codex-runtime-home` への書き込み拒否で停止。詳細は下記 | 設計は暫定継続。ユーザーの実ターミナルでの再検証結果を待って最終判断 |
 | S3 | session id の取得と `resume` による往復 | OK | `SID=01a05855-19d3-7b93-a570-ddfca8ce6f7d`。resume 後の応答は `ALPHA`(期待どおり) | C6/C7 採用 |
-| S4 | `--output-schema` による構造化出力 | **FAILED**(タイムアウト) | 10分でタイムアウト(exit code 143)。stdout/stderrへの出力なし。`/tmp/verdict-out.json` は生成されず | C8 破棄。judge は自然文で `判定: PASS` の形式で返させ、driver が1行目を読む |
+| S4 | `--output-schema` による構造化出力 | OK(再試行で成功。詳細は下記「実測メモ」) | 初回は10分タイムアウト(exit code 143、出力なし)。stdin明示クローズ(`< /dev/null`)+Windows形式絶対パスの両対策を入れた再試行で `{"verdict":"REVISE","rationale":"..."}` が5分未満で出力された | C8 採用。ただし全呼び出しで stdin を明示的に閉じ、`--output-schema` / `-o` には Windows形式の絶対パスを渡すことを必須とする |
 | S5 | `-C <tmpdir>` 隔離下でのリポジトリ読み取り | OK(望ましい結果) | 作業ディレクトリには `goal-frame.md` のみが見え、`README.md` の読み取りは明示的に FAILED(access denied) | 物理隔離のみで PL-009 を担保できる見込み。念のため探索禁止指示も併用する |
 | S6 | `codex exec` セッションでの画像生成 | **判定不能**(実ターミナルでの検証が必要) | 未実行(team-lead 裁定により、S2と同じランタイムホーム/サンドボックス問題に当たる可能性が高いため見送り) | グラレコは grareco-input.md のみ生成する運用を暫定採用。実ターミナルでの検証結果を待って再判断 |
 
@@ -50,7 +50,19 @@ S1(marketplace add → plugin add → スキル可視)は、プラグイン骨�
 
 この時点で team-lead の裁定により、これ以上の追加検証は「環境アーティファクトを掘るだけ」と判断し、S2 は**判定不能(ユーザーの実ターミナルでの検証が必要)**として確定した。
 
-S4(`--output-schema`)についても、10分間のタイムアウトで出力が一切得られなかった。原因は不明(ハング要因を切り分けるための追加実行はしていない)。これも検証環境固有の問題である可能性を否定できないため、下記「実ターミナルでの再確認が必要な項目」に加えた。
+### S4 の実測メモ(タイムアウト→再試行で成功)
+
+初回の S4 は10分間のタイムアウトで出力が一切得られなかった。原因の仮説として (a) `codex exec` が stdin が TTY でないときに追加入力待ちでブロックする、(b) `/tmp/verdict-probe.json` という POSIX パスを Windows バイナリの codex.exe が正しく解決できていない、の2つが考えられた。
+
+再試行では、両方の対策(`< /dev/null` で stdin を明示的にクローズ、`--output-schema` / `-o` に `cygpath -w` で得た Windows形式の絶対パスを使用)を**同時に**適用したところ、5分未満で以下の有効な JSON が返った(スキーマどおり `verdict` が4値のいずれかを含む)。
+
+```
+{"verdict":"REVISE","rationale":"Required verification evidence is missing, so the submission cannot pass the gate. Supply the evidence and resubmit; the underlying plan does not need to change."}
+```
+
+なお実行ログの先頭に一過性のサンドボックスエラー行(`windows sandbox: CreateProcessWithLogonW failed: 267`)が出力されていたが、最終的な JSON 出力は正常に得られており、コマンド全体は成功として扱った。
+
+**2つの対策を同時に適用したため、stdin未クローズとPOSIXパスのどちらが根本原因だったかは切り分けられていない。** 両方を常に適用することを採用方針とした。
 
 ## ユーザーの実ターミナルでの再確認が必要な項目
 
@@ -78,35 +90,11 @@ ls -la "$IMG"
 
 期待: `grareco.png` が生成される、または `NO_IMAGE_TOOL` が返る(いずれも判定可能な結果)。
 
-### (参考・任意)S4: `--output-schema` による構造化出力
-
-team-lead からの明示指示にはないが、タイムアウトで原因不明のまま終わっているため、実ターミナルでの再確認を推奨する。
-
-```bash
-CODEX="/c/Users/makyu/AppData/Local/OpenAI/Codex/bin/3135b80b111fd431/codex.exe"
-cat > /tmp/verdict-probe.json <<'JSON'
-{
-  "type": "object",
-  "properties": {
-    "verdict": { "type": "string", "enum": ["PASS", "REVISE", "REPLAN", "BLOCKED"] },
-    "rationale": { "type": "string" }
-  },
-  "required": ["verdict", "rationale"],
-  "additionalProperties": false
-}
-JSON
-"$CODEX" exec -m gpt-5.6-sol -c model_reasoning_effort=low \
-  -s read-only --skip-git-repo-check \
-  --output-schema /tmp/verdict-probe.json -o /tmp/verdict-out.json \
-  "A submission is missing its verification evidence. Decide the gate verdict." 2>&1 | tail -3
-cat /tmp/verdict-out.json
-```
-
-期待: `verdict` が4値のいずれかである JSON が `/tmp/verdict-out.json` に出力される。
+(S4 は当初この節に含めていたが、stdin明示クローズ+Windows形式絶対パスの再試行で OK が確定したため、この節からは除外した。詳細は上記「S4 の実測メモ」を参照。)
 
 ## 後続タスクへの申し送り
 
 - Task 4(SKILL.md): 起動時チェックの前提チェックで codex 実行ファイルの絶対パスを解決して控え、judge / proxy / builder / reviewer の全呼び出しでそのパスを使う。bare な `codex` は PATH/shim 解決に失敗しうる(S2bで実測)。
 - Task 2〜6: S2 が実ターミナルで FAILED だった場合、サブ役を `codex exec` で分離する設計そのものが成立しないため、全タスクの前提が変わる。S2 の結果が出るまでは、この前提が未確定であることを了解の上で進める。
-- S4(`--output-schema`)は本検証環境ではタイムアウトにより判定不能だった。現時点の採用方針は「C8 破棄・自然文方式」だが、これは実測に基づく確信ではなく、タイムアウトを FAILED 扱いした結果である。実ターミナルで S4 が成功する場合は、Task 2(判定スキーマ)の設計を `--output-schema` 採用に戻す余地がある。
+- 全ての codex exec 呼び出しで stdin を明示的に閉じ(またはヒアドキュメントで与え)、`--output-schema` / `-o` には Windows形式の絶対パスを渡す(S4で実測。これを怠るとタイムアウトする)。
 - S6 未実行のため、グラレコ関連タスク(該当があれば)は「grareco-input.md のみ生成」を暫定の採用方針とし、実ターミナル検証の結果次第で見直す。
