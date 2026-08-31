@@ -48,7 +48,7 @@ foreach ($name in $srcNames) {
     if ($dstNames -notcontains $name) { Write-Output "MISSING: $name"; $failed = $true; continue }
     $a = Get-NormalizedText (Join-Path $src $name)
     $b = Get-NormalizedText (Join-Path $dst $name)
-    if ($a -ne $b) { Write-Output "DIFF: $name"; $failed = $true }
+    if ($a -cne $b) { Write-Output "DIFF: $name"; $failed = $true }
 }
 foreach ($name in $dstNames) {
     if ($srcNames -notcontains $name) { Write-Output "EXTRA: $name"; $failed = $true }
