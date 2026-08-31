@@ -1104,7 +1104,15 @@ codex plugin marketplace add makyua-san/r-super-loop-powers
 codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 ```
 
-起動: Codex セッション内で `$r-super-loop-powers:r-super-loop-powers`
+起動: Codex セッション内で `$r-super-loop-powers`
+
+スキル名は `$` を入力すると補完候補に出ます。環境によっては `r-super-loop-powers:r-super-loop-powers` の形(プラグイン名:スキル名)で表示されることがあるので、実際に表示された名前を選んでください。
+
+### 導入時の注意
+
+- **インストール先は `CODEX_HOME` に従います。** 環境変数 `CODEX_HOME` が設定されている場合、`~/.codex/config.toml` ではなくそちらの config.toml に登録されます。普段 Codex を起動している環境で導入コマンドを実行してください。
+- `codex plugin marketplace add` にローカルパスを渡すと、そのパスに対して `trust_level = "trusted"` が config.toml へ自動追加されることがあります(実測)。
+- 取り消しは `codex plugin remove r-super-loop-powers@r-super-loop-powers-marketplace` と `codex plugin marketplace remove r-super-loop-powers-marketplace` です。`trust_level` のエントリはこれらでは消えない可能性があります。
 
 ### 役とモデル
 
@@ -1129,7 +1137,7 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 
 新規の小規模プロジェクトで MVP 強度・中間マイルストーン1つ以上・Checkpoint1つ以上を完走して確認する。
 
-- [ ] 1. `$r-super-loop-powers:r-super-loop-powers` で起動し、起動時チェック5項目が実行される
+- [ ] 1. `$r-super-loop-powers` で起動し、起動時チェック5項目が実行される
 - [ ] 2. driver が `gpt-5.6-sol` / medium でない場合に `/model` 切替提案が出て、承諾か明示的続行までフェーズ作業が始まらない
 - [ ] 3. `docs/r-super-loop-powers/<goal-slug>/` 一式が作成される(state.md / goal-seed.md / hearing-log.md / assumptions.md / call-log.md)
 - [ ] 4. A-1a で proxy が起動し、session id が `state.md` の `proxy-session:` に記録される
@@ -1150,6 +1158,30 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 - [ ] 19. call-log.md が `judge|proxy|builder|reviewer` の4語のみで記録されている
 - [ ] 20. Checkpoint の ACCEPT 後に確定コミットが行われ、retro.md が作成される
 ````
+
+- [ ] **Step 1b: SKILL.md の起動方法の記述を実測に合わせる**
+
+Task 5 の実測で、スキルは完全修飾ID `r-super-loop-powers:r-super-loop-powers` ではなく素の `r-super-loop-powers` として表示された。`skills-codex/r-super-loop-powers/SKILL.md` の「例外・停止時の扱い」節にある次の1行を修正する。
+
+修正前:
+
+```
+- セッションが切れても、次回 `$r-super-loop-powers:r-super-loop-powers` 起動時に state.md から再開できる(NFR-04)。
+```
+
+修正後(先頭の1文だけを差し替え、以降の文はそのまま残す):
+
+```
+- セッションが切れても、次回 `$r-super-loop-powers`(環境によっては `$r-super-loop-powers:r-super-loop-powers`)起動時に state.md から再開できる(NFR-04)。
+```
+
+変更後、他に完全修飾IDだけを前提にした記述が残っていないか確認する:
+
+```bash
+grep -n 'r-super-loop-powers:r-super-loop-powers' skills-codex/r-super-loop-powers/SKILL.md
+```
+
+Expected: 上で修正した1行のみがヒットする(括弧内の併記として残っている状態)
 
 - [ ] **Step 2: S1 の結果をスモーク記録に追記する**
 
