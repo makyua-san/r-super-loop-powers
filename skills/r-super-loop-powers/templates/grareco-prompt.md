@@ -1,9 +1,9 @@
 # グラフィックレコード生成指示テンプレート
 
-<!-- 使い方: Opusが <対象ディレクトリ> を埋めて codex exec に渡す。 -->
+<!-- 使い方: Opusが <対象ディレクトリ> を埋めて codex に渡す。呼び出しはSKILL.md B-2の規約(node直叩き / プロンプトはstdin / Start-Processで分離 / PID消失で完了判定)に従い、-m gpt-6-astra -c model_reasoning_effort=medium を指定する。 -->
 <!-- 前提: grareco-input.md(human-report / gate-decision / retro の要約)が同ディレクトリに存在すること。 -->
 
-以下を `codex exec` のプロンプトとして使う:
+以下を `codex exec -` の stdin プロンプトとして使う:
 
 ---
 

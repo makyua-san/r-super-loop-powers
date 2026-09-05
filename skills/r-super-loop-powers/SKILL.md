@@ -19,6 +19,12 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
    - 見つかった場合: 最新の state.md を読み、「現在フェーズ / 強度 / 対象マイルストーン / 次のCheckpoint / 次のゲート」を1〜3行でユーザーに報告し、そのフェーズの手順から再開する。
    - 見つからない場合: ワークフローA(新規ゴール)を開始する。
 4. **強度確認**: goal-frame.md が存在する場合、ループ強度(MVP | 高信頼)を読み、policy.md「ループ強度」の工程表に従って以後の工程を実施する。強度未確定のままワークフローBへ進まない。
+5. **codex実行系の解決(このゴールで初回のみ。以後は state.md の `codex-cmd:` を再利用)**:
+   - `mise which codex` / `where codex` で**実体**を解決する。**`codex` を bare で呼ばない**。実体が `.cmd` / `.bat`(miseなどのシム)の場合、バッチ層が複数行引数を破壊し `batch file arguments are invalid` で即失敗する(実測)。
+   - 実体と同じ Node インストール配下の `node.exe` と `node_modules/@openai/codex/bin/codex.js` を解決し、以後の**全codex呼び出しを `<node> <codex.js> exec ...` の形で行う**。
+   - `<node> <codex.js> --version` が **0.153.0 以上**であることを確認する(`gpt-6-astra` の要件)。
+   - `<node> <codex.js> exec -m gpt-6-astra -c model_reasoning_effort=low -s read-only --skip-git-repo-check "Reply with exactly: ASTRA_OK"` が `ASTRA_OK` を返すことを確認する。返らない場合は「実装役のモデル `gpt-6-astra` が利用できない」旨をユーザーに報告して**停止する**(黙って別モデルへ落とさない)。
+   - 解決した2つの絶対パスを state.md の `codex-cmd:` に記録する。
 
 ## ディレクトリ契約
 
@@ -55,6 +61,7 @@ docs/r-super-loop-powers/<goal-slug>/
 - 担当: opus-main | fable | codex | human
 - 次のゲート: goal-gate | impl-gate | human-acceptance | none
 - 待ち: <人間待ちの場合はその内容。なければ ->
+- codex-cmd: <node.exeの絶対パス> <codex.jsの絶対パス>   # 起動時チェック5で解決
 - updated: YYYY-MM-DD HH:MM
 ```
 
@@ -147,19 +154,49 @@ Fable PASS後、人間に提示して実装へ進む承認を得る。
 ## ワークフローB: Milestone Implementation(マイルストーンごとに繰り返す)
 
 **B-1 開始確認(Fable・軽量)**
-直近の retro.md 最大3件の要点を抜粋し、Agentツール(model: fable、新規インスタンス)に goal-frame.md + 対象マイルストーン定義(goal-plan.mdの該当部分) + retro抜粋(あれば)を渡し、「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ」と指示する。call-logに記録。
+直近の retro.md 最大3件の要点を抜粋し、Agentツール(model: fable、新規インスタンス)に goal-frame.md + 対象マイルストーン定義(goal-plan.mdの該当部分) + retro抜粋(あれば)を渡し、「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ。あわせて、このマイルストーンの**難易度と重要度**から実装委譲の reasoning effort を `low | medium | high | xhigh | max | ultra` から1つ選び、速度と精度の効率が最も良い水準を、最終行に `effort: <値>` の形式で出力せよ(根拠は1行)」と指示する。
+
+返答の `effort:` 行を読み取り、B-2の委譲で使う。行が無い/値が梯子の外の場合は `high` を使う。選んだ値と根拠を call-log に記録する。
 
 **B-2〜B-3 実装と自己検証(Codex)**
 強度により委譲単位を変える(policy.md工程表):
 - **MVP**: **マイルストーン単位でまとめて**1〜数回の `codex exec` に委譲する。タスク細分化しない。
 - **高信頼**: subagent-driven developmentと同じプロセス構造でタスク分解し、個別に委譲する。
 
-```bash
-codex exec "<プロンプト>"
+委譲は次の3ステップで行う。**プロンプトを引数で渡さない / bareな `codex` を呼ばない / 前景で待たない** の3点は必ず守る(いずれも実測で失敗した)。
+
+**(1) プロンプトをファイルに書き、stdinから渡す**
+委譲先の作業ディレクトリに `codex-<ラベル>.prompt.md` として保存し、`codex exec -` の stdin から流す。複数行プロンプトを引数で渡すとシム/バッチ層で壊れる。
+
+**(2) Start-Process で分離起動する**
+ターン境界でセッションのプロセスツリーが kill されても委譲が生き残る(通常のバックグラウンド実行では、委譲がTDDのred段階=テストだけ書いた状態で停止した実測がある)。
+
+```powershell
+$W    = "<委譲作業ディレクトリの絶対パス>"
+$node = "<起動時チェック5で解決した node.exe>"
+$cjs  = "<起動時チェック5で解決した codex.js>"
+$p = Start-Process -FilePath $node -ArgumentList @(
+  $cjs,'exec','-','-m','gpt-6-astra',
+  '-c',"model_reasoning_effort=<B-1でFableが選んだ値>",
+  '-s','workspace-write','--skip-git-repo-check'
+) -RedirectStandardInput  "$W\codex-<ラベル>.prompt.md" `
+  -RedirectStandardOutput "$W\codex-<ラベル>.out.txt" `
+  -RedirectStandardError  "$W\codex-<ラベル>.trace.txt" `
+  -WindowStyle Hidden -PassThru
+$p.Id | Out-File -Encoding utf8 "$W\codex-<ラベル>.pid"
 ```
 
-- モデル・reasoning effort・sandboxはユーザーの `~/.codex/config.toml` に従う(上書きしない)
-- Bashのtimeoutは最長(600000ms)を指定し、長そうな委譲は run_in_background で実行する
+**(3) PIDとstderrのmtimeで完了を判定する — 完了マーカーに依存しない**
+ラッパー末尾の `echo` はプロセス終了に間に合わないことがある(最終報告まで書き終えていたのにマーカーが作られず、1時間気づけなかった実測がある)。次の2つで判定する:
+
+| 見るもの | 判定 |
+|---|---|
+| `Get-Process -Id <pid>` が空 | **完了**(これが唯一の完了条件) |
+| `*.trace.txt`(stderr)のmtime | 生存確認。10分以上更新されず、かつPIDが生存 → ストール |
+
+`*.out.txt`(stdout)には**最終回答しか書かれない**ため、stdoutのmtimeでストール判定してはいけない。進捗トレースは stderr に流れる。完了後に読むのは `*.out.txt`(codexの自己検証報告)、経過の確認は `*.trace.txt`。
+
+- モデルは **`gpt-6-astra` 固定**、effort は **B-1でFableが選んだ値**、sandbox は **`-s workspace-write` を明示**する。ユーザーの `~/.codex/config.toml` に依存させない(別マシンで read-only / low 既定だと、実装が書けない・成果物の質が別物になる)
 - プロンプトの必須要素:
   1. 目的(このマイルストーン/タスクが満たす受け入れ条件)
   2. 対象ファイル・変更範囲
@@ -204,7 +241,7 @@ acceptance.md に ACCEPT があることを確認してから、Checkpoint範囲
 ## Learning フェーズ
 
 1. **Retrospective(Opus)**: `templates/retrospective-note.md` に従い `retro.md` を作成する(**MVP: Checkpoint単位** — 対象は前回Checkpoint以降の全マイルストーン / **高信頼**: マイルストーン単位)。観測欄に、ループ回数(REVISE/REPLAN差し戻し数)・呼び出し数(call-log.mdから)・主要フェーズ所要時間(call-logの時刻から概算)・**発見された未知**を記載する(5:1目安はワークフローB以降、ハード制限ではない)。「再利用できる知見・テンプレート候補」に「なし」以外を書いた場合、**このプロジェクトの外でも効くもの**は orca-meta の MCP tool `record_lesson` で送る(軸は person / agent / method。orca-meta プラグインが導入されていない環境では省略してよい)。
-2. **グラレコ(Codex経由)**: human-report.md / gate-decision.md / retro.md の要点を `grareco-input.md` にまとめ、`templates/grareco-prompt.md` の指示文を埋めて `codex exec` に渡す(MVPの非Checkpoint分はB-6中間クローズで生成済みのため、ここではCheckpointマイルストーン分を生成する)。生成失敗時は grareco-input.md を残したまま先へ進む(ループ完了をブロックしない)。call-logに記録(codex)。
+2. **グラレコ(Codex経由)**: human-report.md / gate-decision.md / retro.md の要点を `grareco-input.md` にまとめ、`templates/grareco-prompt.md` の指示文を埋めて codex に渡す(MVPの非Checkpoint分はB-6中間クローズで生成済みのため、ここではCheckpointマイルストーン分を生成する)。呼び出しは **B-2と同じ3ステップの規約**(node直叩き / プロンプトはstdin / Start-Processで分離 / PID消失で完了判定)に従い、モデルは `gpt-6-astra`、effort は `medium` 固定とする(難易度が変動しないためFable判定は不要)。生成失敗時は grareco-input.md を残したまま先へ進む(ループ完了をブロックしない)。call-logに記録(codex)。
 3. **次へ**: 未実装マイルストーンがあれば state.md を milestone-implementation に戻し(「次のCheckpoint」欄を更新)、B-1 から繰り返す。全マイルストーン完了なら state.md を done にし、ゴール全体の完了を人間に報告する。
 
 ## 例外・停止時の扱い
