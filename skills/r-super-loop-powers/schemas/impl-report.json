@@ -1,0 +1,76 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "実装した内容の要約。5行以内。"
+    },
+    "changed_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "作成・変更・削除したファイルのパス一覧。1つも変更していない場合は空配列にし、blocked を true にする。"
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string", "description": "実際に実行したコマンド。実行していない検証をここに書いてはならない。" },
+          "outcome": { "type": "string", "enum": ["PASS", "FAIL", "SKIPPED"] },
+          "evidence": { "type": "string", "description": "出力の要点(件数・エラー行など)。推測ではなく実際の出力から書く。" }
+        },
+        "required": ["command", "outcome", "evidence"],
+        "additionalProperties": false
+      },
+      "description": "実行した検証の一覧。1件も実行していない場合は空配列(その場合オーケストレータ側で不合格になる)。"
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "criterion": { "type": "string", "description": "プロンプトで与えられた受け入れ条件を原文どおりに写す。言い換えない。" },
+          "status": { "type": "string", "enum": ["MET", "NOT_MET", "PARTIAL"] },
+          "note": { "type": "string", "description": "MET の根拠、または未達の理由。" }
+        },
+        "required": ["criterion", "status", "note"],
+        "additionalProperties": false
+      },
+      "description": "与えられた受け入れ条件ごとの自己判定。条件を追加・削除・改変してはならない。"
+    },
+    "new_assumptions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "実装中に新しく置いた仮定。オーケストレータが assumptions.md へ転記する。なければ空配列。"
+    },
+    "unresolved": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "未解決事項・積み残し・気づいた未知。なければ空配列。"
+    },
+    "blocked": {
+      "type": "boolean",
+      "description": "作業を完了できずに停止した場合は true。途中終了を成功として報告してはならない。"
+    },
+    "blocked_reason": {
+      "type": "string",
+      "description": "blocked が true の場合の理由。false の場合は空文字。"
+    },
+    "committed": {
+      "type": "boolean",
+      "description": "git commit / push を実行したかどうか。実行禁止なので常に false のはず。true ならオーケストレータ側で契約違反として扱う。"
+    }
+  },
+  "required": [
+    "summary",
+    "changed_files",
+    "verification",
+    "acceptance_criteria",
+    "new_assumptions",
+    "unresolved",
+    "blocked",
+    "blocked_reason",
+    "committed"
+  ],
+  "additionalProperties": false
+}

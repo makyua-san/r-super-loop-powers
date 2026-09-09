@@ -96,6 +96,7 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 | PL-008 | No forced ratio | 比率は目標であり、品質や安全に必要なFable呼び出しを禁止しない |
 | PL-009 | Context minimization | Fableへは goal-frame + 対象文書 + 仮定台帳の関連部分(+ 必要ならhearing-logの関連部分)のみを渡す。全コード・全会話を常時ロードしない。代理Fableは自インスタンス内の文脈保持のみ許容 |
 | PL-010 | Human cognitive load | 人間向け成果物は、ゴール → 結果 → 証拠 → リスク → 確認手順の順で構造化し、確定事項と仮説による決定を区別する(判断の内訳) |
+| PL-011 | Delegation is verified, not assumed | codex委譲の成否は `bin/codex-status.ps1` の `STATUS: OK` でのみ判定する。プロセスの消滅・自己検証報告の存在・報告本文の印象を成功の根拠にしない。`OK` 以外は不合格として扱い、実装済みとして下流工程(submission / ゲート / コミット)へ進めない。呼び出し規約は `references/codex-invocation.md` |
 
 ## エスカレーション発火条件(いずれかを検出したらFableへ)
 
