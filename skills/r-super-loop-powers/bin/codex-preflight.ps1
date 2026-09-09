@@ -14,7 +14,11 @@ param(
     [string]$MinVersion = '0.153.0',
     [int]$ProbeTimeoutSec = 300,
     [switch]$SkipModelProbe,
-    [switch]$SkipWriteProbe
+    [switch]$SkipWriteProbe,
+    # Human-approved escalation: if -s workspace-write cannot write on this
+    # machine, fall back to -s danger-full-access (codex sandbox OFF). Never set
+    # this on the model's own initiative -- it is policy.md negation list item 4.
+    [switch]$AllowUnsandboxed
 )
 
 $ErrorActionPreference = 'Stop'
@@ -219,6 +223,7 @@ function Invoke-Probe([string]$Sandbox, [string]$PromptText) {
 # spelled correctly and still come back as a 400.
 Write-Kv 'MODEL' $Model
 $sandboxWriteOk = $null
+$sandboxMode = 'workspace-write'
 if ($SkipModelProbe) {
     Write-Kv 'MODEL_PROBE' 'SKIPPED'
 } else {
@@ -242,38 +247,66 @@ if ($SkipModelProbe) {
         Remove-Item -LiteralPath $r.dir -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    # 5b. Can codex actually WRITE under -s workspace-write on this machine?
+    # 5b. Can codex actually WRITE on this machine?
     # On Windows the sandbox can fail to construct, and then every shell command is
     # rejected while the run still exits 0 with a polite final message. That is the
     # delegation that "finishes" having changed nothing. Catch it here, once, for
     # the price of one cheap turn -- not after a 40-minute milestone.
+    $writePrompt = 'Using a shell command, create a file named probe.txt in the current directory containing WRITE_OK. Then reply with exactly: WRITE_DONE'
     if ($SkipWriteProbe) {
         Write-Kv 'SANDBOX_WRITE' 'SKIPPED'
     } else {
-        $w = Invoke-Probe 'workspace-write' 'Using a shell command, create a file named probe.txt in the current directory containing WRITE_OK. Then reply with exactly: WRITE_DONE'
+        # Least privilege first: even when the human has approved running
+        # unsandboxed, use workspace-write if it happens to work here.
+        $w = Invoke-Probe 'workspace-write' $writePrompt
         try {
-            $probeFile = Join-Path $w.dir 'probe.txt'
-            $sandboxWriteOk = (Test-Path -LiteralPath $probeFile)
-            if ($sandboxWriteOk) {
-                Write-Kv 'SANDBOX_WRITE' 'OK'
-            } else {
-                Write-Kv 'SANDBOX_WRITE' 'FAILED'
-                $detail = ($w.stderr -split "`r?`n" | Where-Object { $_ -match '(?i)sandbox|Rejected' } | Select-Object -Last 1)
-                if ($detail) { Write-Kv 'SANDBOX_ERROR' $detail.Trim() }
-                Add-Failure "codex ran but could not write a file under -s workspace-write (exit=$($w.exitCode), turn.completed=$($w.completed)). Delegated implementation would silently change nothing."
-                if ($w.stderr -match 'writable root capability SIDs|windows sandbox') {
-                    Add-Failure "This is the Windows sandbox failing to construct, not a model problem. Known workaround: run the delegation with -Sandbox danger-full-access. That removes codex's sandboxing, so it is a security decision that belongs to the human (policy.md negation list item 4) -- ask before using it, and record it in assumptions.md."
-                }
-            }
+            $sandboxWriteOk = (Test-Path -LiteralPath (Join-Path $w.dir 'probe.txt'))
         } finally {
             Remove-Item -LiteralPath $w.dir -Recurse -Force -ErrorAction SilentlyContinue
         }
+
+        if ($sandboxWriteOk) {
+            $sandboxMode = 'workspace-write'
+            Write-Kv 'SANDBOX_WRITE' 'OK'
+        } else {
+            Write-Kv 'SANDBOX_WRITE' 'FAILED'
+            $detail = ($w.stderr -split "`r?`n" | Where-Object { $_ -match '(?i)sandbox|Rejected' } | Select-Object -Last 1)
+            if ($detail) { Write-Kv 'SANDBOX_ERROR' $detail.Trim() }
+
+            if (-not $AllowUnsandboxed) {
+                Add-Failure "codex ran but could not write a file under -s workspace-write (exit=$($w.exitCode), turn.completed=$($w.completed)). Delegated implementation would silently change nothing."
+                if ($w.stderr -match 'writable root capability SIDs|windows sandbox') {
+                    Add-Failure "This is the Windows sandbox failing to construct, not a model problem. The workaround is to run codex with its sandbox off (-AllowUnsandboxed here, -Sandbox danger-full-access at run time). That is a security decision belonging to the human (policy.md negation list item 4) -- ask before using it, and record it in assumptions.md."
+                }
+                Exit-Preflight
+            }
+
+            # Human-approved fallback: verify it actually works rather than assuming.
+            Write-Kv 'UNSANDBOXED_APPROVED' 'yes (-AllowUnsandboxed)'
+            $d = Invoke-Probe 'danger-full-access' $writePrompt
+            $dOk = $false
+            try {
+                $dOk = (Test-Path -LiteralPath (Join-Path $d.dir 'probe.txt'))
+            } finally {
+                Remove-Item -LiteralPath $d.dir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            if (-not $dOk) {
+                Write-Kv 'SANDBOX_FALLBACK' 'FAILED'
+                Add-Failure "codex could not write under -s danger-full-access either (exit=$($d.exitCode), turn.completed=$($d.completed)). This is no longer a sandbox problem -- report it to the human and stop."
+                Exit-Preflight
+            }
+            $sandboxMode = 'danger-full-access'
+            Write-Kv 'SANDBOX_FALLBACK' 'OK'
+            Write-Kv 'WARN' "codex will run WITHOUT its sandbox (-s danger-full-access): it can run any command and touch any path, not just the workspace. Approved by the human; record it in assumptions.md and decisions.md for this goal."
+        }
     }
 }
+Write-Kv 'SANDBOX_MODE' $sandboxMode
 
 # --- 6. write codex-env.json --------------------------------------------------
-# Written even when a probe failed, so a human-approved fallback (a different
-# sandbox mode) can reuse the resolved paths without re-deriving them.
+# Only reached when every probe passed, so the file never describes an environment
+# that cannot actually run a delegation. A failed probe exits above; the approved
+# recovery is to re-run this script with -AllowUnsandboxed.
 $envDir = Split-Path -Parent $EnvOut
 if ($envDir -and -not (Test-Path -LiteralPath $envDir)) { New-Item -ItemType Directory -Path $envDir -Force | Out-Null }
 $envObj = [ordered]@{
@@ -282,6 +315,8 @@ $envObj = [ordered]@{
     model           = $Model
     auth            = $auth
     sandboxWriteOk  = $sandboxWriteOk
+    sandbox         = $sandboxMode
+    unsandboxed     = ($sandboxMode -eq 'danger-full-access')
     skillDir        = $skillDir
     binDir          = $PSScriptRoot
     schemaDir       = (Join-Path $skillDir 'schemas')

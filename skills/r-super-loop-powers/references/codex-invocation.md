@@ -55,7 +55,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
   -WorkDir   "<対象プロジェクトのルート>" `
   -RunDir    "<goal-dir>\codex-runs" `
   -Effort    "<B-1でFableが選んだ値>" `
-  -Sandbox   workspace-write `
   -OutputSchema "<skill-dir>\schemas\impl-report.json" `
   -TimeoutMinutes 60
 ```
@@ -65,6 +64,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
 - `-Label` は委譲ごとに一意にする(`[A-Za-z0-9._-]+`)。同じラベルで実行中のものがあると起動を拒否する。
 - `-Effort` は `low | medium | high | xhigh | max | ultra`。**`xhigh` 以上は `high` の桁違いのトークンを使い、長時間ハングの報告がある**。B-1でFableが選んだ値を使い、迷ったら `high`。
 - `-OutputSchema` を付けると最終メッセージが `schemas/impl-report.json` に従うJSONになり、status が中身まで検査できる。**B-2では必ず付ける。**
+- **`-Sandbox` は通常指定しない。** プリフライトがこの環境で実際に書き込めると確認したモードが `codex-env.json` から自動で使われる。明示指定は、そのマイルストーンだけ読み取り専用にしたい場合(`read-only`)など例外的な用途に限る。
 - プロンプトの先頭には**実行契約**(スコープ外禁止・コミット禁止・要件再定義禁止・否定リスト・最終メッセージが唯一の出力)が自動で差し込まれる。自分で書かなくてよい。
 
 ### 2-3. 完了を待つ
@@ -117,15 +117,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-statu
 
 Windows で `workspace-write sandbox has no writable root capability SIDs` が出ると、codexは**シェルコマンドを1つも実行できない**まま、丁寧な最終報告を返して exit 0 で終わる。放置すると全マイルストーンが空回りする。
 
-`codex-preflight.ps1` は実際に1ファイル書かせて確認し、失敗すれば `SANDBOX_WRITE: FAILED` で停止する。回避策は `-Sandbox danger-full-access` だが、これは **codexのサンドボックスを外す = policy.md 否定リスト4(セキュリティの扱いの変更)** に該当する。
+`codex-preflight.ps1` は実際に1ファイル書かせて確認し、失敗すれば `SANDBOX_WRITE: FAILED` で停止する。回避策はcodexのサンドボックスを外すことだが、これは **policy.md 否定リスト4(セキュリティの扱いの変更)** に該当する。
 
 したがって:
 
 1. ユーザーに「この環境では codex の workspace-write サンドボックスが機能しないこと」「回避にはサンドボックスを外す必要があること」を提示して**判断を仰ぐ**。
-2. 承認された場合のみ `-Sandbox danger-full-access` を使い、**`assumptions.md` と `decisions.md` に記録する**。
-3. 承認されない場合は委譲を行わない。
+2. 承認された場合のみ、プリフライトを `-AllowUnsandboxed` 付きで再実行する。プリフライトは**まず workspace-write を試し**(最小権限優先)、駄目なときだけ `danger-full-access` に落ちて**それが実際に書けることを確認**してから `codex-env.json` に記録する。以後の委譲は `-Sandbox` を書かなくてもそのモードで走る。
+3. **`assumptions.md` と `decisions.md` に「codexをサンドボックスなしで実行している(ユーザー承認済み・日付)」を記録する。**
+4. 承認されない場合は委譲を行わない。**モデルの判断で `-AllowUnsandboxed` を付けない。**
 
 `codex-run.ps1` は preflight が不可と判定した状態で `workspace-write` を指定すると**起動を拒否する**(何もしない委譲でトークンを捨てないため)。
+
+**サンドボックスなしで動かしているときに何が変わるか**: codexは作業ディレクトリの外を含め任意のコマンドを実行できる。スコープを守らせているのは `codex-run.ps1` が注入する実行契約(プロンプト)だけであり、強制力はない。したがって (a) B-2のプロンプトで対象範囲を具体的に書く、(b) `codex-status.ps1` の `BOUNDARY_HIT:` / `WARN:` 行を毎回確認する、(c) `CONTRACT_VIOLATION`(コミット実行)が出たら必ず `git log` を見る、の3点の重要度が上がる。
 
 ### その他
 

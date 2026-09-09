@@ -28,7 +28,10 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
    ```
    codex実体の解決(シム迂回)・バージョン・認証・モデル疎通・**実際に書き込めるか**までを1回で確認する。実装役モデルの既定は `gpt-6-astra`(変える場合のみ `-Model` を渡す)。解決結果は codex-env.json に入り、以後の全呼び出しがそれを使う。
    - `PREFLIGHT: OK` → `<goal-dir>\codex-env.json` のパスを state.md の `codex-env:` に記録する。以後の全codex呼び出しはこのファイルを渡すだけでよい。
-   - `PREFLIGHT: FAILED` → `REASON:` 行をそのままユーザーへ提示して**停止する**。特に実装役モデルが使えない場合、**黙って別モデルへ落とさない**。`SANDBOX_WRITE: FAILED` の扱いは `references/codex-invocation.md`「既知の環境問題」に従い、サンドボックスを外す判断は**必ず人間に仰ぐ**(否定リスト4に該当)。
+   - `PREFLIGHT: FAILED` → `REASON:` 行をそのままユーザーへ提示して**停止する**。特に実装役モデルが使えない場合、**黙って別モデルへ落とさない**。
+   - `SANDBOX_WRITE: FAILED` で止まった場合(この環境ではcodexの `workspace-write` サンドボックスが構築できない): サンドボックスを外すかどうかは**否定リスト4に該当する人間の判断**である。ユーザーの承認がある場合に限り `-AllowUnsandboxed` を付けて再実行し、**`assumptions.md` と当該マイルストーンの `decisions.md` に「codexをサンドボックスなしで実行している(ユーザー承認済み・日付)」を記録する**。承認がなければ委譲を行わない。自分の判断でこのフラグを付けない。
+
+   `SANDBOX_MODE:` に、以後の委譲で実際に使われるサンドボックスが出る。`danger-full-access` の場合、codexは作業ディレクトリ外を含む任意のコマンドを実行できる状態であり、スコープを守らせているのは `codex-run.ps1` が注入する実行契約だけである。B-2のプロンプトで対象範囲を明確に書く重要度が上がる。
 
    ゴール開始前にこのチェックを通さずにワークフローBへ進まない。
 
@@ -193,10 +196,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
   -EnvFile "<codex-env.json>" -Label "<ラベル>" `
   -PromptFile "<goal-dir>\codex-runs\<ラベル>.prompt.md" `
   -WorkDir "<対象プロジェクトのルート>" -RunDir "<goal-dir>\codex-runs" `
-  -Effort "<B-1でFableが選んだ値>" -Sandbox workspace-write `
+  -Effort "<B-1でFableが選んだ値>" `
   -OutputSchema "<skill-dir>\schemas\impl-report.json" -TimeoutMinutes 60
 ```
-モデル・sandbox・effort・approval_policy はすべて明示的に渡される。ユーザーの `~/.codex/config.toml` に依存しない。**`-OutputSchema` はB-2では必ず付ける**(自己検証報告が構造化され、次のステップで機械的に検査できる)。
+モデル・sandbox・effort・approval_policy はすべて明示的に渡される。ユーザーの `~/.codex/config.toml` に依存しない。**`-Sandbox` は指定しない** — プリフライトがこの環境で実際に動くと確認したモード(`codex-env.json` の `sandbox`)が自動で使われる。**`-OutputSchema` はB-2では必ず付ける**(自己検証報告が構造化され、次のステップで機械的に検査できる)。
 
 **(3) 完了を待つ**
 ```powershell

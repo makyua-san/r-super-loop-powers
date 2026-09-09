@@ -27,7 +27,8 @@ param(
     [string]$RunDir,
     [string]$Model,
     [ValidateSet('low', 'medium', 'high', 'xhigh', 'max', 'ultra')][string]$Effort = 'high',
-    [ValidateSet('read-only', 'workspace-write', 'danger-full-access')][string]$Sandbox = 'workspace-write',
+    # Default comes from codex-env.json (what preflight proved actually works here).
+    [ValidateSet('', 'read-only', 'workspace-write', 'danger-full-access')][string]$Sandbox = '',
     [string]$OutputSchema,
     [string[]]$AddDir = @(),
     [int]$TimeoutMinutes = 60,
@@ -146,10 +147,16 @@ $PromptFile = (Resolve-Path -LiteralPath $PromptFile).Path
 
 if ($Label -notmatch '^[A-Za-z0-9._-]+$') { throw "Label must be [A-Za-z0-9._-]+ (got: $Label)" }
 
+# Take the sandbox preflight proved works here, unless the caller named one.
+if (-not $Sandbox) {
+    if ($codexEnv.PSObject.Properties.Name -contains 'sandbox' -and $codexEnv.sandbox) { $Sandbox = [string]$codexEnv.sandbox }
+    else { $Sandbox = 'workspace-write' }
+}
+
 # Preflight already proved this machine cannot write under workspace-write. Launching
 # anyway burns a full delegation that exits 0 having changed nothing -- refuse instead.
 if ($Sandbox -eq 'workspace-write' -and $codexEnv.PSObject.Properties.Name -contains 'sandboxWriteOk' -and $codexEnv.sandboxWriteOk -eq $false) {
-    throw "preflight found that -s workspace-write cannot write on this machine, so this delegation would do nothing. Ask the human before falling back to -Sandbox danger-full-access (policy.md negation list item 4), or re-run codex-preflight.ps1 if the environment changed."
+    throw "preflight found that -s workspace-write cannot write on this machine, so this delegation would do nothing. Re-run codex-preflight.ps1 with -AllowUnsandboxed once the human has approved running codex without its sandbox (policy.md negation list item 4), or re-run plain preflight if the environment changed."
 }
 
 if (-not $RunDir) { $RunDir = Join-Path $WorkDir '.codex-runs' }
@@ -287,6 +294,9 @@ Write-Kv 'SPAWN' $spawn
 Write-Kv 'MODEL' $Model
 Write-Kv 'EFFORT' $Effort
 Write-Kv 'SANDBOX' $Sandbox
+if ($Sandbox -eq 'danger-full-access') {
+    Write-Kv 'WARN' 'codex is running WITHOUT its sandbox: it can run any command and touch any path. Human-approved; the execution contract is the only thing keeping it in scope.'
+}
 Write-Kv 'TIMEOUT_MIN' $TimeoutMinutes
 Write-Kv 'NEXT' ("powershell -NoProfile -File '{0}\codex-status.ps1' -RunDir '{1}' -Label '{2}' -WaitMinutes 9" -f $PSScriptRoot, $RunDir, $Label)
 exit 0
