@@ -29,8 +29,10 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 ## 前提
 
 - Claude Code + Superpowersプラグイン(改造不要)
-- Codex CLI(`codex login` 済み。モデル等は `~/.codex/config.toml` に従う)
+- Codex CLI **0.153.0 以上**(`codex login` 済み)。モデル・サンドボックス・effort はスキル側が明示的に渡すため `~/.codex/config.toml` には依存しない
+- Windows PowerShell 5.1(委譲ヘルパーの実行環境)
 - 対象プロジェクトによっては Codex の `trust_level` 設定(`~/.codex/config.toml` の `[projects]`)が必要になる場合がある
+- ゴール開始時にプリフライト(`bin/codex-preflight.ps1`)が走り、codex実体・バージョン・認証・モデル疎通・**書き込み可否**を確認する。ここで止まった場合は表示された `REASON:` に従う
 - メインセッションは **`/model opus`** で運用する(Fable消費をヒアリング・代理回答・承認ゲートに限定するため)
 
 ## インストール
@@ -77,7 +79,7 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 ## リポジトリ構成
 
 - `.claude-plugin/` — Claude版プラグインマニフェスト・マーケットプレイス定義
-- `skills/r-super-loop-powers/` — Claude版 SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本)
+- `skills/r-super-loop-powers/` — Claude版 SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本) / `bin/`(codex委譲ヘルパー) / `schemas/`(実装報告スキーマ) / `references/`(codex呼び出し規約)
 - `.codex-plugin/` — Codex版プラグインマニフェスト(`plugin.json`)
 - `.agents/plugins/` — Codex版マーケットプレイス定義(`marketplace.json`)
 - `skills-codex/r-super-loop-powers/` — Codex版 SKILL.md / policy.md / schemas/(ゲート判定・エスカレーション判定の構造化出力スキーマ) / templates/(9種、`skills/` からの複写)
