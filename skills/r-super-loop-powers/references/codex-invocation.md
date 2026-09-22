@@ -1,6 +1,6 @@
 # codex委譲 実行規約(Claude版)
 
-SKILL.md の起動時チェック・B-2・Learning から参照される。**codex を呼ぶときは必ずこの規約に従う。**
+SKILL.md の起動時チェック・A-2〜A-4(技術PM)・B-2・Learning から参照される。**codex を呼ぶときは必ずこの規約に従う。**
 
 このディレクトリの `bin/` にある3本のスクリプトが規約の実体である。**PowerShellを自分で組み立てて codex を直接叩かない。** 手書きの起動コマンドは、`< /dev/null` の欠落・POSIXパス・終了確認の省略といった失敗を毎回作り直すからである(下記「実測された失敗」参照)。
 
@@ -62,9 +62,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
 すぐに戻る。`RUN: STARTED` と `NEXT:`(そのまま実行できる status コマンド)が出る。
 
 - `-Label` は委譲ごとに一意にする(`[A-Za-z0-9._-]+`)。同じラベルで実行中のものがあると起動を拒否する。
-- `-Effort` は `low | medium | high | xhigh | max | ultra`。**`xhigh` 以上は `high` の桁違いのトークンを使い、長時間ハングの報告がある**。B-1でFableが選んだ値を使い、迷ったら `high`。
+- `-Effort` は `low | medium | high | xhigh | max | ultra`。**`xhigh` 以上は `high` の桁違いのトークンを使い、長時間ハングの報告がある**。B-2ではB-1でFableが選んだ値を使う。実装委譲の基本は `low`、難しい問題のみ `medium`。迷ったら `low`(スクリプトの既定も `low`)。技術PM呼び出しは `max` 固定。
 - `-OutputSchema` を付けると最終メッセージが `schemas/impl-report.json` に従うJSONになり、status が中身まで検査できる。**B-2では必ず付ける。**
-- **`-Sandbox` は通常指定しない。** プリフライトがこの環境で実際に書き込めると確認したモードが `codex-env.json` から自動で使われる。明示指定は、そのマイルストーンだけ読み取り専用にしたい場合(`read-only`)など例外的な用途に限る。
+- **`-Sandbox` は通常指定しない。** プリフライトがこの環境で実際に書き込めると確認したモードが `codex-env.json` から自動で使われる。明示指定は、そのマイルストーンだけ読み取り専用にしたい場合(`read-only`)など例外的な用途に限る。**例外: A-2〜A-4の技術PM呼び出しは必ず `-Sandbox read-only`**(助言役にコードを変更させない。SKILL.md「技術PM(Codex)共通契約」)。
 - プロンプトの先頭には**実行契約**(スコープ外禁止・コミット禁止・要件再定義禁止・否定リスト・最終メッセージが唯一の出力)が自動で差し込まれる。自分で書かなくてよい。
 
 ### 2-3. 完了を待つ

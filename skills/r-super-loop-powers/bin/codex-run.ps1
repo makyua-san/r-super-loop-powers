@@ -26,7 +26,7 @@ param(
     [Parameter(Mandatory = $true)][string]$WorkDir,
     [string]$RunDir,
     [string]$Model,
-    [ValidateSet('low', 'medium', 'high', 'xhigh', 'max', 'ultra')][string]$Effort = 'high',
+    [ValidateSet('low', 'medium', 'high', 'xhigh', 'max', 'ultra')][string]$Effort = 'low',
     # Default comes from codex-env.json (what preflight proved actually works here).
     [ValidateSet('', 'read-only', 'workspace-write', 'danger-full-access')][string]$Sandbox = '',
     [string]$OutputSchema,
