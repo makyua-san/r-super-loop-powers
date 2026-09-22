@@ -15,6 +15,16 @@ param(
     [int]$ProbeTimeoutSec = 300,
     [switch]$SkipModelProbe,
     [switch]$SkipWriteProbe,
+    # Extra directories to name as sandbox writable roots when -s workspace-write
+    # cannot construct its own (Windows "no writable root capability SIDs"). The
+    # probe directory is always included; pass the project root here if delegations
+    # will touch paths outside their working directory.
+    [string[]]$WritableRoot = @(),
+    # Directory to run the write probe in. The sandbox mints its capability SID per
+    # working directory, so a fresh temp folder can fail where the real project --
+    # which codex has run in before -- works. Pass the project root that delegations
+    # will actually use; the probe file is deleted afterwards.
+    [string]$ProbeDir = '',
     # Human-approved escalation: if -s workspace-write cannot write on this
     # machine, fall back to -s danger-full-access (codex sandbox OFF). Never set
     # this on the model's own initiative -- it is policy.md negation list item 4.
@@ -173,25 +183,35 @@ if ($auth -eq 'MISSING' -and $SkipModelProbe) {
 
 # --- 5. probes ----------------------------------------------------------------
 # Runs one codex turn in a throwaway directory and reports what came back.
-function Invoke-Probe([string]$Sandbox, [string]$PromptText) {
-    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('codex-preflight-' + [Guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
-    $result = @{ dir = $tmp; exitCode = $null; completed = $false; text = ''; error = ''; stderr = ''; timedOut = $false }
+# $NameWritableRoots: also pass -c sandbox_workspace_write.writable_roots naming the
+# throwaway probe directory plus -WritableRoot. Used for the retry after the sandbox
+# fails to infer its own roots.
+function Invoke-Probe([string]$Sandbox, [string]$PromptText, [bool]$NameWritableRoots = $false, [string]$Cwd = '') {
+    $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ('codex-preflight-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $scratch -Force | Out-Null
+    $cwdDir = $scratch
+    if ($Cwd) { $cwdDir = (Resolve-Path -LiteralPath $Cwd).Path }
+    $result = @{ dir = $scratch; cwd = $cwdDir; argLine = ''; exitCode = $null; completed = $false; text = ''; error = ''; stderr = ''; timedOut = $false }
     try {
-        $promptFile = Join-Path $tmp '__prompt.txt'
-        $outFile = Join-Path $tmp '__out.jsonl'
-        $errFile = Join-Path $tmp '__err.txt'
+        $promptFile = Join-Path $scratch '__prompt.txt'
+        $outFile = Join-Path $scratch '__out.jsonl'
+        $errFile = Join-Path $scratch '__err.txt'
         Write-TextFile $promptFile $PromptText
 
         $probeArgs = $inv.Prefix + @(
             'exec', '--json', '-',
-            '-C', $tmp,
+            '-C', $cwdDir,
             '-s', $Sandbox,
             '-c', 'approval_policy=never',
             '-c', 'model_reasoning_effort=low',
             '--skip-git-repo-check'
         )
         if ($Model) { $probeArgs += @('-m', $Model) }
+        if ($Sandbox -eq 'workspace-write' -and $NameWritableRoots) {
+            $rootsArg = ConvertTo-WritableRootsArg (@($cwdDir) + $WritableRoot)
+            if ($rootsArg) { $probeArgs += @('-c', $rootsArg) }
+        }
+        $result.argLine = ConvertTo-ArgLine $probeArgs
 
         $p = Register-ProcessHandle (Start-Process -FilePath $inv.File -ArgumentList (ConvertTo-ArgLine $probeArgs) `
                 -RedirectStandardInput $promptFile -RedirectStandardOutput $outFile -RedirectStandardError $errFile `
@@ -219,11 +239,31 @@ function Invoke-Probe([string]$Sandbox, [string]$PromptText) {
     }
 }
 
+$ProbeFileName = 'codex-preflight-probe.txt'
+
+# Did the probe actually put the file on disk? Cleans up the scratch directory AND
+# the probe file, so a probe pointed at a real project leaves nothing behind.
+function Complete-WriteProbe($Probe) {
+    $f = Join-Path $Probe.cwd $ProbeFileName
+    $ok = Test-Path -LiteralPath $f
+    Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $Probe.dir -Recurse -Force -ErrorAction SilentlyContinue
+    return $ok
+}
+
+function Get-SandboxErrorLine($Probe) {
+    if (-not $Probe) { return '' }
+    $line = ($Probe.stderr -split "`r?`n" | Where-Object { $_ -match '(?i)sandbox|Rejected' } | Select-Object -Last 1)
+    if ($line) { return $line.Trim() }
+    return ''
+}
+
 # 5a. Does the configured model answer at all for THIS account? A model name can be
 # spelled correctly and still come back as a 400.
 Write-Kv 'MODEL' $Model
 $sandboxWriteOk = $null
 $sandboxMode = 'workspace-write'
+$writableRootsRequired = $false
 if ($SkipModelProbe) {
     Write-Kv 'MODEL_PROBE' 'SKIPPED'
 } else {
@@ -246,35 +286,71 @@ if ($SkipModelProbe) {
     } finally {
         Remove-Item -LiteralPath $r.dir -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
 
-    # 5b. Can codex actually WRITE on this machine?
+# 5b. Can codex actually WRITE on this machine?
     # On Windows the sandbox can fail to construct, and then every shell command is
     # rejected while the run still exits 0 with a polite final message. That is the
     # delegation that "finishes" having changed nothing. Catch it here, once, for
     # the price of one cheap turn -- not after a 40-minute milestone.
-    $writePrompt = 'Using a shell command, create a file named probe.txt in the current directory containing WRITE_OK. Then reply with exactly: WRITE_DONE'
+    $writePrompt = "Using a shell command, create a file named $ProbeFileName in the current directory containing WRITE_OK. Then reply with exactly: WRITE_DONE"
     if ($SkipWriteProbe) {
         Write-Kv 'SANDBOX_WRITE' 'SKIPPED'
     } else {
-        # Least privilege first: even when the human has approved running
-        # unsandboxed, use workspace-write if it happens to work here.
+        # Least privilege first, and least configuration first: if plain
+        # workspace-write writes here, nothing else needs to be arranged.
+        $failedProbes = @()
         $w = Invoke-Probe 'workspace-write' $writePrompt
-        try {
-            $sandboxWriteOk = (Test-Path -LiteralPath (Join-Path $w.dir 'probe.txt'))
-        } finally {
-            Remove-Item -LiteralPath $w.dir -Recurse -Force -ErrorAction SilentlyContinue
+        $sandboxWriteOk = Complete-WriteProbe $w
+        if (-not $sandboxWriteOk) { $failedProbes += $w }
+
+        # Second chance BEFORE declaring the sandbox unusable: on Windows it often
+        # fails only because it was left to infer its writable roots. Naming them
+        # keeps least privilege; dropping the sandbox does not.
+        if (-not $sandboxWriteOk) {
+            $w2 = Invoke-Probe 'workspace-write' $writePrompt $true
+            if (Complete-WriteProbe $w2) {
+                $sandboxWriteOk = $true
+                $writableRootsRequired = $true
+                $w = $w2
+            } else { $failedProbes += $w2 }
+        }
+
+        # Third chance: the capability SID is minted per working directory, so a
+        # throwaway temp folder can fail where the project codex has run in before
+        # succeeds. -ProbeDir is where the delegations will actually run.
+        if (-not $sandboxWriteOk -and $ProbeDir) {
+            $w3 = Invoke-Probe 'workspace-write' $writePrompt $true $ProbeDir
+            if (Complete-WriteProbe $w3) {
+                $sandboxWriteOk = $true
+                $writableRootsRequired = $true
+                $w = $w3
+            } else { $failedProbes += $w3 }
         }
 
         if ($sandboxWriteOk) {
             $sandboxMode = 'workspace-write'
-            Write-Kv 'SANDBOX_WRITE' 'OK'
+            if ($writableRootsRequired) {
+                Write-Kv 'SANDBOX_WRITE' 'OK (writable_roots named explicitly)'
+                Write-Kv 'WRITABLE_ROOTS_REQUIRED' 'yes'
+                foreach ($r in $WritableRoot) { Write-Kv 'WRITABLE_ROOT' $r }
+            } else {
+                Write-Kv 'SANDBOX_WRITE' 'OK'
+            }
         } else {
             Write-Kv 'SANDBOX_WRITE' 'FAILED'
-            $detail = ($w.stderr -split "`r?`n" | Where-Object { $_ -match '(?i)sandbox|Rejected' } | Select-Object -Last 1)
-            if ($detail) { Write-Kv 'SANDBOX_ERROR' $detail.Trim() }
+            $attempt = 0
+            foreach ($fp in $failedProbes) {
+                $attempt++
+                $detail = Get-SandboxErrorLine $fp
+                if ($detail) { Write-Kv "SANDBOX_ERROR_$attempt" $detail }
+                Write-Kv "SANDBOX_ATTEMPT_$attempt" $fp.argLine
+            }
+            $w = $failedProbes[$failedProbes.Count - 1]
 
             if (-not $AllowUnsandboxed) {
                 Add-Failure "codex ran but could not write a file under -s workspace-write (exit=$($w.exitCode), turn.completed=$($w.completed)). Delegated implementation would silently change nothing."
+                Add-Failure 'Every attempt listed above failed, including naming the writable roots explicitly.'
                 if ($w.stderr -match 'writable root capability SIDs|windows sandbox') {
                     Add-Failure "This is the Windows sandbox failing to construct, not a model problem. The workaround is to run codex with its sandbox off (-AllowUnsandboxed here, -Sandbox danger-full-access at run time). That is a security decision belonging to the human (policy.md negation list item 4) -- ask before using it, and record it in assumptions.md."
                 }
@@ -283,16 +359,11 @@ if ($SkipModelProbe) {
 
             # Human-approved fallback: verify it actually works rather than assuming.
             Write-Kv 'UNSANDBOXED_APPROVED' 'yes (-AllowUnsandboxed)'
-            $d = Invoke-Probe 'danger-full-access' $writePrompt
-            $dOk = $false
-            try {
-                $dOk = (Test-Path -LiteralPath (Join-Path $d.dir 'probe.txt'))
-            } finally {
-                Remove-Item -LiteralPath $d.dir -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            $dProbe = Invoke-Probe 'danger-full-access' $writePrompt $false $ProbeDir
+            $dOk = Complete-WriteProbe $dProbe
             if (-not $dOk) {
                 Write-Kv 'SANDBOX_FALLBACK' 'FAILED'
-                Add-Failure "codex could not write under -s danger-full-access either (exit=$($d.exitCode), turn.completed=$($d.completed)). This is no longer a sandbox problem -- report it to the human and stop."
+                Add-Failure "codex could not write under -s danger-full-access either (exit=$($dProbe.exitCode), turn.completed=$($dProbe.completed)). This is no longer a sandbox problem -- report it to the human and stop."
                 Exit-Preflight
             }
             $sandboxMode = 'danger-full-access'
@@ -300,7 +371,6 @@ if ($SkipModelProbe) {
             Write-Kv 'WARN' "codex will run WITHOUT its sandbox (-s danger-full-access): it can run any command and touch any path, not just the workspace. Approved by the human; record it in assumptions.md and decisions.md for this goal."
         }
     }
-}
 Write-Kv 'SANDBOX_MODE' $sandboxMode
 
 # --- 6. write codex-env.json --------------------------------------------------
@@ -314,8 +384,11 @@ $envObj = [ordered]@{
     version         = $version
     model           = $Model
     auth            = $auth
+    sandboxWriteProbe = $(if ($SkipWriteProbe) { 'SKIPPED' } else { 'RUN' })
     sandboxWriteOk  = $sandboxWriteOk
     sandbox         = $sandboxMode
+    writableRootsRequired = $writableRootsRequired
+    writableRoots   = @($WritableRoot)
     unsandboxed     = ($sandboxMode -eq 'danger-full-access')
     skillDir        = $skillDir
     binDir          = $PSScriptRoot

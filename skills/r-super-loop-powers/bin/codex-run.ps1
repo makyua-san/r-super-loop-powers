@@ -31,6 +31,9 @@ param(
     [ValidateSet('', 'read-only', 'workspace-write', 'danger-full-access')][string]$Sandbox = '',
     [string]$OutputSchema,
     [string[]]$AddDir = @(),
+    # Extra sandbox writable roots. The working directory is always included when
+    # preflight found that this machine needs them named explicitly.
+    [string[]]$WritableRoot = @(),
     [int]$TimeoutMinutes = 60,
     [switch]$NoPreamble,
     # internal
@@ -207,6 +210,19 @@ $codexArgs = $inv.Prefix + @(
     '-o', $lastFile
 )
 if ($Model) { $codexArgs += @('-m', $Model) }
+# Windows: the sandbox may be unable to infer its own writable root ("no writable
+# root capability SIDs"), which rejects every shell command while the run still
+# exits 0. preflight records whether naming them explicitly is required here.
+$needRoots = $false
+if ($codexEnv.PSObject.Properties.Name -contains 'writableRootsRequired' -and $codexEnv.writableRootsRequired) { $needRoots = $true }
+if ($WritableRoot.Count -gt 0) { $needRoots = $true }
+if ($Sandbox -eq 'workspace-write' -and $needRoots) {
+    $roots = @($WorkDir)
+    if ($codexEnv.PSObject.Properties.Name -contains 'writableRoots' -and $codexEnv.writableRoots) { $roots += @($codexEnv.writableRoots) }
+    $roots += $WritableRoot
+    $rootsArg = ConvertTo-WritableRootsArg $roots
+    if ($rootsArg) { $codexArgs += @('-c', $rootsArg) }
+}
 foreach ($d in $AddDir) {
     if ($d) {
         if (-not (Test-Path -LiteralPath $d)) { throw "AddDir does not exist: $d" }

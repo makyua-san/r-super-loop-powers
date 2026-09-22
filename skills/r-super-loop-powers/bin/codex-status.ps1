@@ -105,7 +105,11 @@ $boundaryHits = New-Object System.Collections.ArrayList
 $boundaryPattern = '(\.claude[\\/])|(\.codex[\\/])|(\.agents[\\/])|(SKILL\.md)|([\\/]skills[\\/])'
 
 if (Test-Path -LiteralPath $outFile) {
-    $reader = New-Object System.IO.StreamReader($outFile, [System.Text.Encoding]::UTF8)
+    # The worker is still writing this file. Open it shared, or polling throws
+    # "being used by another process" and a healthy run looks like a tooling error.
+    $stream = New-Object System.IO.FileStream($outFile, [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read, ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+    $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
     try {
         while (($line = $reader.ReadLine()) -ne $null) {
             if (-not $line.Trim()) { continue }
@@ -156,7 +160,7 @@ if (Test-Path -LiteralPath $outFile) {
                 }
             }
         }
-    } finally { $reader.Dispose() }
+    } finally { $reader.Dispose(); $stream.Dispose() }
 }
 
 $firstError = $fatalError
