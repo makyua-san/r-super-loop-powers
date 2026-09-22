@@ -106,7 +106,7 @@ codex plugin marketplace add makyua-san/r-super-loop-powers
 codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 ```
 
-**この GitHub 形式の導入コマンドは未検証です。** 実測できたのはローカルパス形式のみです。GitHub形式で失敗する場合は、リポジトリをクローンしてローカルパスで登録してください(ローカルパス形式はスモークテストS1で実測済み)。
+**この GitHub 形式の導入コマンドは検証済みです。** 2026-09-23、Windows 11 / codex-cli 0.146.0 で、マーケットプレイス登録・プラグイン導入・新規 `codex exec` セッションからのスキル認識を確認しました。検証範囲と再現手順は[導入検証記録](docs/superpowers/notes/2026-09-23-codex-github-install-smoke.md)を参照してください。これは導入(S1)の確認であり、ネスト実行(S2)やゴールループ全体のE2E完走を意味しません。GitHub形式で失敗する場合は、リポジトリをクローンしてローカルパスで登録してください(ローカルパス形式もスモークテストS1で実測済み)。
 
 ```bash
 codex plugin marketplace add "<クローンしたリポジトリの絶対パス>"
@@ -119,7 +119,7 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 
 ### 未検証事項: ネスト実行(S2)
 
-このプラグインの設計は、親Codexセッションの中からサブ役(judge / proxy / builder / reviewer)を `codex exec` でネスト実行できることに全面的に依存していますが、この動作(S2)は検証環境の固有事情により**判定不能**のままです。導入後、実ターミナルで一度確認することを推奨します。プローブコマンドは `docs/superpowers/notes/2026-08-31-codex-smoke.md` の「ユーザーの実ターミナルでの再確認が必要な項目」にあります(SKILL.mdの起動時チェックでも毎ゴール初回に自動確認されます)。
+このプラグインの設計は、親Codexセッションの中からサブ役(judge / proxy / builder / reviewer)を `codex exec` でネスト実行できることに全面的に依存していますが、この動作(S2)は検証環境の固有事情により**判定不能**のままです。2026-09-23の再試行もWindowsサンドボックスのシェル起動エラーで停止しました([検証記録](docs/superpowers/notes/2026-09-23-codex-github-install-smoke.md))。導入後、実ターミナルで一度確認することを推奨します。プローブコマンドは `docs/superpowers/notes/2026-08-31-codex-smoke.md` の「ユーザーの実ターミナルでの再確認が必要な項目」にあります(SKILL.mdの起動時チェックでも毎ゴール初回に自動確認されます)。
 
 ### 役とモデル
 
