@@ -102,11 +102,11 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 
 ---
 
-## Codex版(Codex CLI)
+## Codex版(協調サブエージェント対応環境)
 
-Claude Code 版と同じゴールループを Codex CLI 単体で回すための移植版です。工程(A-0〜A-8 / B-1〜B-10)・成果物契約・ゲート規律は Claude 版と同一で、モデル運用層だけが異なります。
+Claude Code 版と同じゴールループを、Codexの協調サブエージェントで回すための移植版です。工程(A-0〜A-8 / B-1〜B-10)・成果物契約・ゲート規律は維持し、各役をdriverから直接委譲します。実行環境に `collaboration.spawn_agent` / `followup_task` / `send_message` / `list_agents` / `wait_agent` / `interrupt_agent` と独立コンテキスト指定(`fork_turns: "none"`)が必要です。CLIをインストールしただけではこの実行条件を満たすとは限りません。判定検証用にPowerShell 7の `pwsh` も必要です。
 
-設計仕様: `docs/superpowers/specs/2026-08-31-r-super-loop-powers-codex-port-design.md`
+初期移植設計: `docs/superpowers/specs/2026-08-31-r-super-loop-powers-codex-port-design.md`。現在の実行方式は[協調サブエージェント移行設計](docs/superpowers/specs/2026-09-23-collaboration-backend-design.md)を優先します。
 
 ### 導入時の注意(導入コマンドを実行する前にお読みください)
 
@@ -121,7 +121,7 @@ codex plugin marketplace add makyua-san/r-super-loop-powers
 codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 ```
 
-**この GitHub 形式の導入コマンドは未検証です。** 実測できたのはローカルパス形式のみです。GitHub形式で失敗する場合は、リポジトリをクローンしてローカルパスで登録してください(ローカルパス形式はスモークテストS1で実測済み)。
+**この GitHub 形式の導入コマンドは検証済みです。** 2026-09-23、Windows 11 / codex-cli 0.146.0 で、マーケットプレイス登録・プラグイン導入・新規 `codex exec` セッションからのスキル認識を確認しました。検証範囲と再現手順は[導入検証記録](docs/superpowers/notes/2026-09-23-codex-github-install-smoke.md)を参照してください。これは導入(S1)の確認であり、ネスト実行(S2)やゴールループ全体のE2E完走を意味しません。GitHub形式で失敗する場合は、リポジトリをクローンしてローカルパスで登録してください(ローカルパス形式もスモークテストS1で実測済み)。
 
 ```bash
 codex plugin marketplace add "<クローンしたリポジトリの絶対パス>"
@@ -132,9 +132,13 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 
 スキル名は `$` を入力すると補完候補に出ます。環境によっては `r-super-loop-powers:r-super-loop-powers` の形(プラグイン名:スキル名)で表示されることがあるので、実際に表示された名前を選んでください。
 
-### 未検証事項: ネスト実行(S2)
+### 実行方式と検証範囲
 
-このプラグインの設計は、親Codexセッションの中からサブ役(judge / proxy / builder / reviewer)を `codex exec` でネスト実行できることに全面的に依存していますが、この動作(S2)は検証環境の固有事情により**判定不能**のままです。導入後、実ターミナルで一度確認することを推奨します。プローブコマンドは `docs/superpowers/notes/2026-08-31-codex-smoke.md` の「ユーザーの実ターミナルでの再確認が必要な項目」にあります(SKILL.mdの起動時チェックでも毎ゴール初回に自動確認されます)。
+`codex exec` のネスト起動とその事前プローブを必須条件から外しました。旧方式のS2では内側プロセスを起動するWindowsサンドボックスが失敗しましたが、直接の `codex exec` や通常のエージェント委譲全体が不能という結果ではありません([当時の検証記録](docs/superpowers/notes/2026-09-23-codex-github-install-smoke.md))。
+
+新方式はdriverが各役を `fork_turns: "none"` で作成し、役ごとの必要資料を明示的に渡します。これは会話履歴と役割の分離です。共有ファイルシステムへのアクセスをOSが遮断するものではなく、judge/proxyにはファイル探索・ツール利用を禁止する指示を付けます。OSレベルのアクセス隔離が必要な用途では別の実行基盤が必要です。
+
+導入(S1)の実測はv0.1.0に対する結果です。協調方式の検証範囲は[移行検証記録](docs/superpowers/notes/2026-09-23-collaboration-backend-smoke.md)を参照してください。以下のE2Eチェックリストは完走時に別途確認します。
 
 ### 役とモデル
 
@@ -146,13 +150,13 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 | builder | gpt-5.6-luna / max | 実装と自己検証 |
 | reviewer | gpt-5.6-sol / max | 高信頼強度の独立レビュー(B-5) |
 
-サブ役はすべて `codex exec` サブプロセスとして起動され、proxy のみ `codex exec resume` で往復します。judge と proxy は必要文書だけをコピーした一時ディレクトリで起動し、対象プロジェクトの生コードを渡しません(PL-009)。
+サブ役はすべてdriverが協調サブエージェントとして直接作成します。proxyのみ同じagentへ `followup_task` で往復し、judgeは判定ごとに新規作成します。judge/proxyには必要文書の本文だけを渡し、builder/reviewerには対象spec・planと作業に必要なソース範囲を指定します。独立した作業は同時委譲できますが、同じファイルの変更や依存する工程は直列化し、ゲートは必要な結果が揃ってから実行します。
 
 ### Claude版との差分
 
 - 役名: Opus / Fable / Codex → driver / judge / proxy / builder / reviewer
-- ゲート判定は `schemas/gate-verdict.json` による構造化出力(PASS / REVISE / REPLAN / BLOCKED)
-- 代理役の文脈は `state.md` の `proxy-session:` に記録され、**セッションを跨いで復元できる**(Claude版にはない)
+- ゲート判定はJSONで返させ、`schemas/gate-verdict.json` と同梱の `scripts/validate-verdict.ps1` で形式・意味条件を検証(PASS / REVISE / REPLAN / BLOCKED)。検証失敗をPASSとして扱わない
+- 代理役のIDは `state.md` の `proxy-agent:` に記録する。同一実行環境で存在確認できる場合だけ再利用し、セッションを跨ぐ場合・消失時は保存文書から新規proxyへ文脈を復元する。旧 `proxy-session:` はCLIセッションIDなので流用しない
 - テンプレート9枚は Claude 版と同一。原本は `skills/r-super-loop-powers/templates/` で、`scripts/sync-templates.ps1` が `skills-codex/` 側へ複写する
 
 ### E2Eチェックリスト(Codex版)
@@ -162,21 +166,24 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 - [ ] 1. `$r-super-loop-powers` で起動し、起動時チェック5項目が実行される
 - [ ] 2. driver が `gpt-5.6-sol` / medium でない場合に `/model` 切替提案が出て、承諾か明示的続行までフェーズ作業が始まらない
 - [ ] 3. `docs/r-super-loop-powers/<goal-slug>/` 一式が作成される(state.md / goal-seed.md / hearing-log.md / assumptions.md / call-log.md)
-- [ ] 4. A-1a で proxy が起動し、session id が `state.md` の `proxy-session:` に記録される
-- [ ] 5. A-1a の質問がそのまま人間へ提示され、回答が hearing-log.md に記録され、`codex exec resume` で往復する
+- [ ] 4. A-1a で独立コンテキストのproxyが起動し、返されたagent IDが `state.md` の `proxy-agent:` に記録される
+- [ ] 5. A-1a の質問がそのまま人間へ提示され、回答が hearing-log.md に記録され、`followup_task` で往復する
 - [ ] 6. proxy が HOW を質問せず、無自覚の既知(暗黙の前提・避けたい体験・優先順位)を掘る質問を返す
 - [ ] 7. A-1b で goal-frame.md が生成され、人間がループ強度を確定する
 - [ ] 8. A-2〜A-4 で `$superpowers:brainstorming` が起動し、質問の相手が proxy になる
 - [ ] 9. proxy がユーザー固有判断の問いに `ASK_HUMAN:` を返し、それだけが人間へ提示される
 - [ ] 10. goal-plan.md にマイルストーン一覧と Checkpoint 印、「主要設計判断(proxy代理回答による)」欄がある
-- [ ] 11. A-6 で judge が一時ディレクトリで起動し、`gate-verdict.json` 準拠のJSONを返す
-- [ ] 12. judge が一時ディレクトリ外の対象リポジトリのファイルを読めない(例: README.md 等の読み取りが FAILED になる。C9 の隔離効果の確認)
+- [ ] 11. A-6 で新規judgeが `fork_turns: "none"` で起動し、返したJSONが検証スクリプトを通過する。不正JSON・不整合なPASSでは進まない
+- [ ] 12. judge/proxyに全会話や生コードを渡さず、ツール利用・担当外探索がないことを実行履歴で確認する(ファイルアクセス権の隔離を意味しない)
 - [ ] 13. A-8 の承認提示が WHAT レベル(spec/plan は参照リンクのみ)である
 - [ ] 14. B-2 で builder が `gpt-5.6-luna` / max で起動し、`builder-report.md` に自己検証報告を残す
 - [ ] 15. builder が git コミットをしていない
 - [ ] 16. decisions.md が4区分で作成される
 - [ ] 17. B-6 の PASS 後、非Checkpointマイルストーンは人間承認なしで次のB-1へ進む
 - [ ] 18. Checkpoint到達時のみ human-report.md が作られ、受け入れテストが依頼される
-- [ ] 19. proxy の session id が judge に `resume` されていない(call-log.md と実行履歴で確認)
-- [ ] 20. call-log.md が `judge|proxy|builder|reviewer` の4語のみで記録されている
+- [ ] 19. judgeのagent IDがproxy/builder/reviewerと異なり、判定ごとに新規作成されている(call-log.md と実行履歴で確認)
+- [ ] 20. call-log.mdの役欄が `judge|proxy|builder|reviewer` の4語のみで、agent ID・model/effort・入力・出力・失敗も記録される
 - [ ] 21. Checkpoint の ACCEPT 後に確定コミットが行われ、retro.md が作成される
+- [ ] 22. 依存しない作業だけが並列委譲され、全必須結果の確認前にゲートへ進まない
+- [ ] 23. 旧CLI状態・消失したproxy IDから、必要文書だけで新規proxyを復元できる
+- [ ] 24. 協調ツール不在・起動失敗は明示して停止し、ネストCLIやdriverによる自己判定へ暗黙に切り替えない
