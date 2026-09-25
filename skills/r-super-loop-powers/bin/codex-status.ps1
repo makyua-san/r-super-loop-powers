@@ -255,6 +255,7 @@ if ($null -ne $exitCode) {
 # --- report -------------------------------------------------------------------
 Write-Kv 'LABEL' $Label
 Write-Kv 'RUN_DIR' $RunDir
+if ($meta.PSObject.Properties.Name -contains 'role') { Write-Kv 'ROLE' $meta.role }
 Write-Kv 'MODEL' $meta.model
 Write-Kv 'EFFORT' $meta.effort
 Write-Kv 'ELAPSED_SEC' $elapsedSec

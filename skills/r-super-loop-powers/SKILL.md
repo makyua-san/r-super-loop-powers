@@ -26,9 +26,11 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-preflight.ps1" -EnvOut "<goal-dir>\codex-env.json"
    ```
-   codex実体の解決(シム迂回)・バージョン・認証・モデル疎通・**実際に書き込めるか**までを1回で確認する。実装役モデルの既定は `gpt-6-astra`(変える場合のみ `-Model` を渡す。A-2〜A-4の技術PMも同じモデルを使う)。解決結果は codex-env.json に入り、以後の全呼び出しがそれを使う。
+   codex実体の解決(シム迂回)・バージョン・認証・モデル疎通・**実際に書き込めるか**までを1回で確認する。モデルは役割で分ける: **実装役(builder)= `gpt-6-sol`**、**技術PM(techpm)= `gpt-6-astra`**。両方を疎通確認する(変える場合のみ `-Model` / `-TechPmModel` を渡す)。解決結果は codex-env.json に入り、以後の全呼び出しは `-Role` に応じてそこからモデルを選ぶ。
    - `PREFLIGHT: OK` → `<goal-dir>\codex-env.json` のパスを state.md の `codex-env:` に記録する。以後の全codex呼び出しはこのファイルを渡すだけでよい。
-   - `PREFLIGHT: FAILED` → `REASON:` 行をそのままユーザーへ提示して**停止する**。特に実装役モデルが使えない場合、**黙って別モデルへ落とさない**。
+   - `PREFLIGHT: FAILED` → `REASON:` 行をそのままユーザーへ提示して**停止する**。特にどちらかのモデルが使えない場合(例: `not supported when using Codex with a ChatGPT account` = アカウントへの段階展開がまだ)、**黙って別モデルへ落とさない**。代替モデルはユーザーが指名した場合のみ `-Model` / `-TechPmModel` で渡し、decisions.md に記録する。
+   - **暫定運用(ユーザー承認 2026-09-25)**: `gpt-6-sol` がアカウント未展開(`not supported when using Codex with a ChatGPT account`)で拒否された場合**に限り**、プリフライトは実装役を `gpt-6-astra` にして続行し、`MODEL: gpt-6-astra (interim fallback)` と `WARN:` を出す(codex-env.json の `builderFallbackFrom` に `gpt-6-sol` が入る)。これが出たら decisions.md に「実装役は暫定で astra(sol未展開)」と記録する。それ以外のエラーでは代替しない。プリフライトはゴールごとに sol を再確認するので、展開後は自動で sol に戻る。
+   - 既存ゴールの codex-env.json に `techpmModel` が無い場合(v0.5以前に生成)は、再開時にプリフライトを再実行する(`codex-run.ps1` が `WARN:` で知らせる)。
    - `SANDBOX_WRITE: FAILED` で止まった場合(この環境ではcodexの `workspace-write` サンドボックスが構築できない): サンドボックスを外すかどうかは**否定リスト4に該当する人間の判断**である。ユーザーの承認がある場合に限り `-AllowUnsandboxed` を付けて再実行し、**`assumptions.md` と当該マイルストーンの `decisions.md` に「codexをサンドボックスなしで実行している(ユーザー承認済み・日付)」を記録する**。承認がなければ委譲を行わない。自分の判断でこのフラグを付けない。
 
    `SANDBOX_MODE:` に、以後の委譲で実際に使われるサンドボックスが出る。`danger-full-access` の場合、codexは作業ディレクトリ外を含む任意のコマンドを実行できる状態であり、スコープを守らせているのは `codex-run.ps1` が注入する実行契約だけである。B-2のプロンプトで対象範囲を明確に書く重要度が上がる。
@@ -47,6 +49,7 @@ docs/r-super-loop-powers/<goal-slug>/
 ├── goal-frame.md            # Fable入口出力 = 承認基準・強度・未知マップ・終了条件の原本
 ├── assumptions.md           # 仮定台帳(全フェーズで追記)
 ├── goal-plan.md             # spec/planリンク + マイルストーン一覧(Checkpoint印) + 主要設計判断(Fable代理回答 / 技術PM回答による)
+├── tech-assessment.md       # 技術PMのマイルストーン別実装アセス(MVP・A-4末)。B-2で実装役にそのまま渡す
 ├── goal-plan-submission.md  # A-5 Goal Plan承認用submission
 ├── goal-gate-decision.md    # A-6 Goal Gate判定
 ├── call-log.md              # 呼び出し記録(PL-007)
@@ -114,7 +117,8 @@ fable / opus-sub(Opus 5.5サブエージェント) / codex-techpm(技術PM) / co
 7. 代理ブレストに参加したFableインスタンスにゲート判定(A-6 / B-6)をさせない(自己承認の禁止)(SK-010)
 8. **`codex-status.ps1` の `STATUS: OK` 以外を成功として扱わない。** プロセスが消えたこと・自己検証報告が返ったことは、いずれも単独では完了の証拠にならない(実測で、失敗した実行と成功した実行が同一に見えた)。判定を目視や推測で代替しない
 9. codexの呼び出しは `bin/` のスクリプト経由でのみ行う。起動コマンドを自分で組み立てない
-10. 技術PMは助言役である。**必ず `-Sandbox read-only` で起動し**、コード変更・設計承認をさせない
+10. 技術PMは助言役である。**必ず `-Role techpm` で起動し**(スクリプトが read-only を強制する)、コード変更・設計承認をさせない
+11. 実装役は実行者である。**必ず `-Role builder` で起動し**、設計・計画・選択肢の提示をやり直させない。承認済みの技術アセスをプロンプトに入れずに委譲しない
 
 ## Fableサブエージェント共通契約
 
@@ -126,7 +130,7 @@ fable / opus-sub(Opus 5.5サブエージェント) / codex-techpm(技術PM) / co
 
 ## 技術PM(Codex)共通契約
 
-- **役割**: MVPの代理ブレスト(A-2〜A-4)で、**HOWに係る問い**に**実装責任者**の立場から回答する。モデルは実装役と同じ `gpt-6-astra`(codex-env.json)、effort は `max` 固定。
+- **役割**: MVPの代理ブレスト(A-2〜A-4)で、**HOWに係る問い**に**実装責任者**の立場から回答し、A-4末に**実装アセス**(`tech-assessment.md`)を出す。モデルは `gpt-6-astra`(codex-env.json の `techpmModel`)、effort は `max` 固定。実装役(`gpt-6-sol`)はこのアセスに従って実行するだけなので、**技術判断はここで出し切らせる**。
 - **回答範囲**: 実装方式・技術選択・構成と分割・既存コードとの整合・技術リスク・工数感・検証可能性。ユーザー価値・好み・優先順位は決めない — 必要なら `NEEDS_USER_VIEW: <代理Fableへの問い>` を返させる。設計承認もしない(承認は代理Fable)。
 - **起動**(B-2と同じスクリプト。必ず `bin/` 経由):
   ```powershell
@@ -134,9 +138,9 @@ fable / opus-sub(Opus 5.5サブエージェント) / codex-techpm(技術PM) / co
     -EnvFile "<codex-env.json>" -Label "brainstorm-techpm-<連番>" `
     -PromptFile "<goal-dir>\codex-runs\brainstorm-techpm-<連番>.prompt.md" `
     -WorkDir "<対象プロジェクトのルート>" -RunDir "<goal-dir>\codex-runs" `
-    -Sandbox read-only -Effort max -TimeoutMinutes 30
+    -Role techpm -Effort max -TimeoutMinutes 30
   ```
-  `-Sandbox read-only` は必須(ゲート保護ルール10)。`-OutputSchema` は**付けない**(回答は散文であり実装報告ではない)。既存コードは技術PM自身が読んでよい。
+  `-Role techpm` は必須(ゲート保護ルール10)。スクリプトが read-only を強制し、技術PMのペルソナ(助言役・プロセス系スキルを起動しない・実装役がそのまま実行できる具体度で答える)を実行契約の後に自動で差し込む。`-OutputSchema` は**付けない**(回答は散文であり実装報告ではない)。既存コードは技術PM自身が読んでよい。
 - **完了と採否**: `codex-status.ps1` で待ち、`STATUS: OK` のときだけ `FINAL_MESSAGE_FILE` を回答として採用する(ゲート保護ルール8)。OK以外は1回だけ再実行し、再度失敗したらユーザーへ報告し、Opusの判断で代替して続行するかを確認する(黙って代筆しない)。
 - **プロンプト必須要素**:
   1. 役割宣言: 「あなたはこのゴールの技術PM(実装責任者)。自分が実装を担当する前提で、HOWに関する問いに答えよ。コードは書かない・変更しない」
@@ -144,6 +148,8 @@ fable / opus-sub(Opus 5.5サブエージェント) / codex-techpm(技術PM) / co
   3. 質問リスト(番号付き。アプローチ比較の問いは候補案を併記)
   4. 出力要求: 質問ごとに「回答 / 根拠(既存コードの該当箇所があれば引用) / 前提・リスク / 確信度(高・中・低)」。ユーザー判断が要る問いは `NEEDS_USER_VIEW:` 行で返す
 - **往復**: codexはセッションを継続しないため、**1ラウンド=1呼び出し**。effort `max` は1回が重いので、brainstormingの進行を止めない範囲でHOWの問いを束ねる(例: アプローチ提示の段階でそれまでのHOW論点をまとめて1回)。
+- **実装アセス(MVP・A-4末に1回。ラベル `techpm-assessment`)**: writing-plans が plan を書き終えたら、goal-frame.md + spec + plan + 主要設計判断を渡し、**マイルストーンごと**に次を出させる — 採用する実装方式(1つに決め切る) / 触るファイル・関数 / 作業順 / 既知のリスクと回避策 / 完了を示す検証コマンド / 実装役が迷いそうな点への指示。出力は `## M<n>` 見出しで区切らせる。`STATUS: OK` の `FINAL_MESSAGE_FILE` を `tech-assessment.md`(goal直下)に保存し、goal-plan.md からリンクする。Goal Gate(A-6)の submission にも添付する(ゲートFableが実装方針を確認できるように)。
+  - REVISE / REPLAN で plan が変わった場合は、変わったマイルストーンについてのみ再アセスする。
 - **高信頼強度**: HOWは人間が決めるため必須ではない。人間が技術的見解を求めた場合のみ同じ契約で呼ぶ。
 - 呼び出しごとに call-log へ記録(codex-techpm)。
 
@@ -175,6 +181,7 @@ Opusは質問をそのまま人間へ提示し、回答を `hearing-log.md` に�
 
   代理Fableへの依頼文に必ず含める: 「あなたはユーザーの代理として**ユーザー目線で**回答する。根拠は goal-frame.md と hearing-log.md。技術PMの見解が添付されている場合、技術的な実現性・リスクの評価はそれを前提とし、ユーザー価値の観点で選べ。技術PMの評価とユーザー価値が衝突し、選択でユーザー体験が大きく変わる場合は回答せず `ASK_HUMAN:` を返せ。**ユーザー固有の判断(好み・業務文脈・優先順位)が必要でヒアリング記録から導けない問い、否定リスト該当、エスカレーション発火条件該当の問いには、回答せず `ASK_HUMAN: <人間向けの質問文>` と返せ**。」 ASK_HUMANが返った質問のみ人間へ提示し、回答を hearing-log.md に追記して代理Fableへ共有する。主要決定(採用アプローチ・設計承認・主要な技術選択)は goal-plan.md の「主要設計判断(Fable代理回答 / 技術PM回答による)」欄に、**どちらの回答を根拠にしたか**を付けて記録する。往復ごとにcall-logへ記録(fable / codex-techpm)。
 **未知の振り分け**: ヒアリング・ブレスト中に人間または代理Fableが「決めていない / わからない」と答えた問いは、その場で追及せず**仮説化して assumptions.md に記録し、続行する**。goal-frame.md の未知マップと突き合わせる。
+**MVPでは plan 完成後に技術PMの実装アセスを取る**(「技術PM(Codex)共通契約」の実装アセス)。これが無いまま A-5 へ進まない。
 完了後、spec/planへの相対リンクとマイルストーン一覧を `goal-plan.md` に集約し、**Checkpoint印を付ける**(policy.md「Checkpointとマイルストーン粒度」: Checkpoint = ユーザー価値をE2Eで評価できる点。最終マイルストーンは必ずCheckpoint)。「主要設計判断(Fable代理回答 / 技術PM回答による)」欄もここに置く。
 
 **A-5 Approval Submission(Opus)**
@@ -199,7 +206,7 @@ Fable PASS後、人間に提示して実装へ進む承認を得る。
 ## ワークフローB: Milestone Implementation(マイルストーンごとに繰り返す)
 
 **B-1 開始確認(Fable・軽量)**
-直近の retro.md 最大3件の要点を抜粋し、Agentツール(model: fable、新規インスタンス)に goal-frame.md + 対象マイルストーン定義(goal-plan.mdの該当部分) + retro抜粋(あれば)を渡し、「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ。あわせて、このマイルストーンの**難易度と重要度**から実装委譲の reasoning effort を `low | medium | high | xhigh | max | ultra` から1つ選び、速度と精度の効率が最も良い水準を、最終行に `effort: <値>` の形式で出力せよ(根拠は1行)」と指示する。
+直近の retro.md 最大3件の要点を抜粋し、Agentツール(model: fable、新規インスタンス)に goal-frame.md + 対象マイルストーン定義(goal-plan.mdの該当部分) + retro抜粋(あれば)を渡し、「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ。あわせて、このマイルストーンの**難易度と重要度**から実装委譲の reasoning effort を `low | medium | high | xhigh | max` から1つ選び、速度と精度の効率が最も良い水準を、最終行に `effort: <値>` の形式で出力せよ(根拠は1行)。実装方式は技術PMのアセスで決まっており、実装役はそれを実行するだけである点を考慮せよ」と指示する(実装役 `gpt-6-sol` は `ultra` を持たない。渡しても `codex-run.ps1` が `max` に丸める)。
 
 返答の `effort:` 行を読み取り、B-2の委譲で使う。行が無い/値が梯子の外の場合は `high` を使う。選んだ値と根拠を call-log に記録する。
 
@@ -211,14 +218,17 @@ Fable PASS後、人間に提示して実装へ進む承認を得る。
 委譲は `references/codex-invocation.md` の実行規約に従う。**codex を自分で組み立てたPowerShellで直接呼ばない** — 起動・完了判定・失敗検出は `bin/` の3本のスクリプトに任せる(手書きの起動コマンドは、stdin未クローズ・POSIXパス・終了確認の省略といった実測済みの失敗を毎回作り直すため)。
 
 **(1) プロンプトを書く**
-`<goal-dir>/codex-runs/<ラベル>.prompt.md` に保存する。必須要素は次の5つ:
-  1. 目的(このマイルストーン/タスクが満たす受け入れ条件。codexにそのまま `acceptance_criteria` へ写させるので、検証可能な文で書く)
-  2. 対象ファイル・変更範囲
-  3. 検証要求 — **MVP**: 受け入れ基準に直結する検証+未知低減に効く検証のみ / **高信頼**: テストファースト+単体・結合・lint・型検査
-  4. 関連する未検証仮定(assumptions.mdから)
-  5. 出力要求(「最終メッセージは指定されたJSONスキーマに従うこと」)
+`<goal-dir>/codex-runs/<ラベル>.prompt.md` に保存する。実装役(`gpt-6-sol`)は**実行者**であり、設計・計画は済んでいる。プロンプトは「何を・どの方針で・何をもって完了とするか」を**決め切った状態**で渡す(実装役に選ばせる余地を残すと、計画づくりから始めてしまう)。必須要素は次の6つで、この見出しの順に書く:
+  1. `## TECHNICAL ASSESSMENT` — **MVP**: `tech-assessment.md` の該当 `## M<n>` 節を**原文のまま**貼る(要約・言い換えしない) / **高信頼**: 人間が承認した plan の該当タスク本文。ロール指示がこの見出しを参照するので名前を変えない
+  2. `## ACCEPTANCE CRITERIA` — このマイルストーン/タスクが満たす受け入れ条件(codexにそのまま `acceptance_criteria` へ写させるので、検証可能な文で書く)
+  3. `## SCOPE` — 対象ファイル・変更範囲(触ってよい範囲と、触らない範囲)
+  4. `## VERIFICATION` — **MVP**: 受け入れ基準に直結する検証+未知低減に効く検証のみ / **高信頼**: テストファースト+単体・結合・lint・型検査。実行すべきコマンドを具体的に書く
+  5. `## OPEN ASSUMPTIONS` — 関連する未検証仮定(assumptions.mdから)
+  6. `## OUTPUT` — 「最終メッセージは指定されたJSONスキーマに従うこと」
 
-禁止事項(**gitコミット禁止**・要件の再定義禁止・否定リスト該当の自律判断禁止・`~/.claude/` 等への接触禁止)は**書かなくてよい**。`codex-run.ps1` が実行契約として自動で先頭に差し込む。
+plan から転記するときは、`REQUIRED SUB-SKILL` / `superpowers:` / チェックボックス付きの手順指示など**エージェント向けの進め方の指示行を含めない**(実装役がプロセス系スキルを起動する引き金になる)。コードや手順の中身だけを写す。
+
+禁止事項(**gitコミット禁止**・要件の再定義禁止・否定リスト該当の自律判断禁止・`~/.claude/` 等への接触禁止)と**実装役のペルソナ**(実行者であること・技術アセスに従うこと・ブレスト/計画/質問をしないこと・安全>安定>速度の優先順位・アセスが実コードと合わない場合の扱い)は**書かなくてよい**。`-Role builder` を付けると `codex-run.ps1` が実行契約+ロール指示として自動で先頭に差し込む。また superpowers 等のプラグインは委譲ごとに無効化される(`--disable plugins`)。
 
 **(2) 起動する(即座に戻る)**
 ```powershell
@@ -226,10 +236,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
   -EnvFile "<codex-env.json>" -Label "<ラベル>" `
   -PromptFile "<goal-dir>\codex-runs\<ラベル>.prompt.md" `
   -WorkDir "<対象プロジェクトのルート>" -RunDir "<goal-dir>\codex-runs" `
-  -Effort "<B-1でFableが選んだ値>" `
+  -Role builder -Effort "<B-1でFableが選んだ値>" `
   -OutputSchema "<skill-dir>\schemas\impl-report.json" -TimeoutMinutes 60
 ```
-モデル・sandbox・effort・approval_policy はすべて明示的に渡される。ユーザーの `~/.codex/config.toml` に依存しない。**`-Sandbox` は指定しない** — プリフライトがこの環境で実際に動くと確認したモード(`codex-env.json` の `sandbox`)が自動で使われる。**`-OutputSchema` はB-2では必ず付ける**(自己検証報告が構造化され、次のステップで機械的に検査できる)。
+モデル(`-Role builder` → codex-env.json の `model` = `gpt-6-sol`)・sandbox・effort・approval_policy・プラグイン無効化はすべて明示的に渡される。ユーザーの `~/.codex/config.toml` に依存しない。**`-Sandbox` は指定しない** — プリフライトがこの環境で実際に動くと確認したモード(`codex-env.json` の `sandbox`)が自動で使われる。**`-OutputSchema` はB-2では必ず付ける**(自己検証報告が構造化され、次のステップで機械的に検査できる)。
 
 **(3) 完了を待つ**
 ```powershell
@@ -287,7 +297,7 @@ acceptance.md に ACCEPT があることを確認してから、Checkpoint範囲
 ## Learning フェーズ
 
 1. **Retrospective(Opus)**: `templates/retrospective-note.md` に従い `retro.md` を作成する(**MVP: Checkpoint単位** — 対象は前回Checkpoint以降の全マイルストーン / **高信頼**: マイルストーン単位)。観測欄に、ループ回数(REVISE/REPLAN差し戻し数)・呼び出し数(call-log.mdから)・主要フェーズ所要時間(call-logの時刻から概算)・**発見された未知**を記載する(5:1目安はワークフローB以降、ハード制限ではない)。「再利用できる知見・テンプレート候補」に「なし」以外を書いた場合、**このプロジェクトの外でも効くもの**は orca-meta の MCP tool `record_lesson` で送る(軸は person / agent / method。orca-meta プラグインが導入されていない環境では省略してよい)。
-2. **グラレコ(Codex経由)**: human-report.md / gate-decision.md / retro.md の要点を `grareco-input.md` にまとめ、`templates/grareco-prompt.md` の指示文を埋めて codex に渡す(MVPの非Checkpoint分はB-6中間クローズで生成済みのため、ここではCheckpointマイルストーン分を生成する)。呼び出しは **B-2と同じ規約**(`codex-run.ps1` → `codex-status.ps1`)に従い、effort は `medium` 固定、`-OutputSchema` は**付けない**(成果物は画像でありJSON報告ではない)。生成失敗時は grareco-input.md を残したまま先へ進む(ループ完了をブロックしない) — ここは `STATUS: OK` 以外でも停止しない唯一の例外である。call-logに記録(codex)。
+2. **グラレコ(Codex経由)**: human-report.md / gate-decision.md / retro.md の要点を `grareco-input.md` にまとめ、`templates/grareco-prompt.md` の指示文を埋めて codex に渡す(MVPの非Checkpoint分はB-6中間クローズで生成済みのため、ここではCheckpointマイルストーン分を生成する)。呼び出しは **B-2と同じ規約**(`codex-run.ps1` → `codex-status.ps1`)に従い、`-Role grareco`、effort は `medium` 固定、`-OutputSchema` は**付けない**(成果物は画像でありJSON報告ではない)。生成失敗時は grareco-input.md を残したまま先へ進む(ループ完了をブロックしない) — ここは `STATUS: OK` 以外でも停止しない唯一の例外である。call-logに記録(codex)。
 3. **次へ**: 未実装マイルストーンがあれば state.md を milestone-implementation に戻し(「次のCheckpoint」欄を更新)、B-1 から繰り返す。全マイルストーン完了なら state.md を done にし、ゴール全体の完了を人間に報告する。
 
 ## 例外・停止時の扱い

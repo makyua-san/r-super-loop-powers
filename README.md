@@ -22,7 +22,7 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 
 ## ループ強度
 
-- **MVP(既定)**: Fableヒアリング → HOW委任(代理ブレスト: Fable=ユーザー目線 / 技術PM=Codex astra・effort maxによるHOW回答) → マイルストーン自律進行(Fableゲート+中間コミット) → Checkpointでのみ評価パッケージ+Human Acceptance。人間の関与は「ヒアリング回答 / Goal Frame確定 / Goal Plan承認(WHATレベル) / ASK_HUMAN応答 / Checkpoint受け入れ」の5点
+- **MVP(既定)**: Fableヒアリング → HOW委任(代理ブレスト: Fable=ユーザー目線 / 技術PM=Codex astra・effort maxによるHOW回答+実装アセス) → マイルストーン自律進行(実装はCodex solがアセスに従って実行)(Fableゲート+中間コミット) → Checkpointでのみ評価パッケージ+Human Acceptance。人間の関与は「ヒアリング回答 / Goal Frame確定 / Goal Plan承認(WHATレベル) / ASK_HUMAN応答 / Checkpoint受け入れ」の5点
 - **高信頼**: 人間参加のブレスト・タスク分解・diff確認・独立レビュー・フルテスト・マイルストーン毎Acceptance
 - Goal Frame作成時にFableが提案し、人間が確定する。FableゲートとHuman Acceptanceは両強度で維持される
 
@@ -58,8 +58,8 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 | メイン | Opus 5.5(`/model opus`) | 進行管理・成果物作成・代理ブレストでの問いの振り分け |
 | 代理Fable | Fable(`Agent model: fable`) | ヒアリング駆動・Goal Frame・代理ブレストの**ユーザー目線**の回答と設計承認 |
 | ゲート・判断Fable | Fable(`Agent model: fable`、呼び出し毎に新規) | 承認ゲート・マイルストーン開始確認・エスカレーション判定・REJECT後の戻り先決定 |
-| 技術PM | codex `gpt-6-astra` / max / read-only | 代理ブレストで**HOWに係る問い**に実装責任者として回答 |
-| 実装 | codex `gpt-6-astra` / B-1でFableが選択(スクリプト既定 low) | 実装と自己検証 |
+| 技術PM | codex `gpt-6-astra` / max / read-only | 代理ブレストで**HOWに係る問い**に実装責任者として回答し、A-4末にマイルストーン別の実装アセスを出す |
+| 実装 | codex `gpt-6-sol` / B-1でFableが選択(low〜max。スクリプト既定 low) | 技術PMのアセスに従う実行者として実装と自己検証(プラグイン無効・ブレスト/計画はしない) |
 | 独立レビュー(高信頼のみ) | Opus 5.5(`Agent model: opus`) | B-5の独立レビュー |
 
 ## E2Eテスト(導入・改訂時に1周まわす)

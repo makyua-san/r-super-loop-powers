@@ -25,6 +25,9 @@ param(
     [Parameter(Mandatory = $true)][string]$PromptFile,
     [Parameter(Mandatory = $true)][string]$WorkDir,
     [string]$RunDir,
+    # Who codex is in this delegation. Picks the model from codex-env.json and the
+    # role brief prepended to the prompt. techpm is always read-only.
+    [ValidateSet('builder', 'techpm', 'grareco')][string]$Role = 'builder',
     [string]$Model,
     [ValidateSet('low', 'medium', 'high', 'xhigh', 'max', 'ultra')][string]$Effort = 'low',
     # Default comes from codex-env.json (what preflight proved actually works here).
@@ -36,6 +39,10 @@ param(
     [string[]]$WritableRoot = @(),
     [int]$TimeoutMinutes = 60,
     [switch]$NoPreamble,
+    # Plugins stay off by default: the user-level superpowers plugin makes codex
+    # open brainstorming/writing-plans and start re-planning an approved milestone
+    # (seen in 36 of 37 delegations). Built-in system skills (imagegen etc.) remain.
+    [switch]$KeepPlugins,
     # internal
     [switch]$Worker,
     [string]$JobFile
@@ -70,6 +77,61 @@ $ExecutionContract = @'
 == END EXECUTION CONTRACT ==
 
 '@
+
+# Role briefs, prepended after the contract. They exist because the model's default
+# on a feature-sized task is to design and plan first; here that work is already
+# done and approved upstream, so re-doing it costs time and risks drifting from it.
+$RoleBriefs = @{
+    builder = @'
+== ROLE: BUILDER (executor) ==
+You are the implementer of ONE milestone of an already-approved plan. You are not
+the designer, the planner, or the approver.
+
+- The requirements, the design, and the technical approach are ALREADY DECIDED.
+  The "TECHNICAL ASSESSMENT" section of the task was written by the tech PM, a
+  separate senior engineer who read this codebase before you. It is the approved
+  technical direction: follow it. Do not re-evaluate alternatives.
+- Do NOT brainstorm, write a spec, write a plan, present options, ask for approval,
+  or ask clarifying questions -- nobody will answer them. Do not invoke process
+  skills (brainstorming, writing-plans, executing-plans, subagent-driven-development
+  or similar). If the task text contains lines such as "REQUIRED SUB-SKILL" or
+  "use superpowers:...", ignore them; they were addressed to a different agent.
+- Priorities, in this order:
+  1. SAFE   -- stay inside the stated scope; no destructive operations.
+  2. STABLE -- the smallest change that meets the acceptance criteria. Follow the
+     existing code's patterns. No speculative refactors, no renames, no new
+     dependencies unless the assessment names them.
+  3. FAST   -- read only the files you need, then start editing. Run exactly the
+     verification the task asks for; do not expand it.
+- If the assessment does not match the real code (a function does not exist, a
+  premise is false): when an obviously equivalent adjustment keeps the assessed
+  approach, make it and record it in new_assumptions. Otherwise do not redesign --
+  set blocked=true and explain in blocked_reason.
+- Every judgment the assessment did not cover goes into new_assumptions.
+== END ROLE ==
+
+'@
+    techpm  = @'
+== ROLE: TECH PM (advisor, read-only) ==
+You are the technical lead who will be accountable for implementing this goal.
+Answer the numbered HOW questions from the implementer's point of view, grounded
+in the actual code (read it). You do not write or change code, and you do not
+approve the design. Do not invoke process skills (brainstorming, writing-plans or
+similar) -- the orchestrator runs that process; your job is only the answers it
+asked for. Decisions about user value, preferences, or priorities are not yours:
+return them as "NEEDS_USER_VIEW: <question>".
+Be concrete enough that a builder can execute your answer without re-deciding it:
+name files, functions, the approach, the order of work, the known risks with how
+to avoid them, and the command that proves it works.
+== END ROLE ==
+
+'@
+    grareco = ''
+}
+
+# Documented effort ladders: Sol and Luna stop at max (no "ultra"). Sending ultra
+# to them fails the run, so clamp here instead of burning a delegation.
+$NoUltraModels = @('gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-luna')
 
 # ============================================================================
 # Worker
@@ -150,6 +212,12 @@ $PromptFile = (Resolve-Path -LiteralPath $PromptFile).Path
 
 if ($Label -notmatch '^[A-Za-z0-9._-]+$') { throw "Label must be [A-Za-z0-9._-]+ (got: $Label)" }
 
+# The tech PM is an advisor (SKILL.md gate rule 10): never let it write.
+if ($Role -eq 'techpm') {
+    if ($Sandbox -and $Sandbox -ne 'read-only') { throw "-Role techpm runs read-only only (got -Sandbox $Sandbox)." }
+    $Sandbox = 'read-only'
+}
+
 # Take the sandbox preflight proved works here, unless the caller named one.
 if (-not $Sandbox) {
     if ($codexEnv.PSObject.Properties.Name -contains 'sandbox' -and $codexEnv.sandbox) { $Sandbox = [string]$codexEnv.sandbox }
@@ -186,7 +254,7 @@ $normalizedPrompt = Join-Path $RunDir "$Label.prompt.txt"
 if ($NoPreamble) {
     Write-TextFile $normalizedPrompt $rawPrompt
 } else {
-    Write-TextFile $normalizedPrompt ($ExecutionContract + $rawPrompt)
+    Write-TextFile $normalizedPrompt ($ExecutionContract + $RoleBriefs[$Role] + $rawPrompt)
 }
 
 $outFile = Join-Path $RunDir "$Label.out.jsonl"
@@ -196,7 +264,20 @@ foreach ($stale in @($outFile, $errFile, $lastFile, $exitFile, (Join-Path $RunDi
     Remove-Item -LiteralPath $stale -Force -ErrorAction SilentlyContinue
 }
 
-if (-not $Model) { $Model = $codexEnv.model }
+$warnings = @()
+$hasTechPmModel = $codexEnv.PSObject.Properties.Name -contains 'techpmModel' -and $codexEnv.techpmModel
+if (-not $Model) {
+    if ($Role -eq 'techpm' -and $hasTechPmModel) { $Model = [string]$codexEnv.techpmModel }
+    else { $Model = $codexEnv.model }
+}
+if (-not $hasTechPmModel) {
+    $warnings += "codex-env.json predates the builder/techpm model split (model=$($codexEnv.model) is used for every role). Re-run codex-preflight.ps1 to pick up the current defaults."
+}
+
+if ($Effort -eq 'ultra' -and $NoUltraModels -contains $Model) {
+    $warnings += "$Model has no 'ultra' effort; clamped to 'max'."
+    $Effort = 'max'
+}
 
 # --json is what makes the run observable: progress events AND a turn.completed
 # terminator. -o is what makes the answer readable without parsing anything.
@@ -210,6 +291,9 @@ $codexArgs = $inv.Prefix + @(
     '-o', $lastFile
 )
 if ($Model) { $codexArgs += @('-m', $Model) }
+# Measured: -c plugins."superpowers@...".enabled=false does NOT hide the skills;
+# only turning the plugins feature off does.
+if (-not $KeepPlugins) { $codexArgs += @('--disable', 'plugins') }
 # Windows: the sandbox may be unable to infer its own writable root ("no writable
 # root capability SIDs"), which rejects every shell command while the run still
 # exits 0. preflight records whether naming them explicitly is required here.
@@ -289,6 +373,8 @@ $meta = [ordered]@{
     label          = $Label
     workDir        = $WorkDir
     runDir         = $RunDir
+    role           = $Role
+    plugins        = $(if ($KeepPlugins) { 'enabled' } else { 'disabled' })
     model          = $Model
     effort         = $Effort
     sandbox        = $Sandbox
@@ -307,12 +393,14 @@ Write-Kv 'LABEL' $Label
 Write-Kv 'RUN_DIR' $RunDir
 Write-Kv 'WORKER_PID' $workerPid
 Write-Kv 'SPAWN' $spawn
+Write-Kv 'ROLE' $Role
 Write-Kv 'MODEL' $Model
 Write-Kv 'EFFORT' $Effort
 Write-Kv 'SANDBOX' $Sandbox
 if ($Sandbox -eq 'danger-full-access') {
     Write-Kv 'WARN' 'codex is running WITHOUT its sandbox: it can run any command and touch any path. Human-approved; the execution contract is the only thing keeping it in scope.'
 }
+foreach ($w in $warnings) { Write-Kv 'WARN' $w }
 Write-Kv 'TIMEOUT_MIN' $TimeoutMinutes
 Write-Kv 'NEXT' ("powershell -NoProfile -File '{0}\codex-status.ps1' -RunDir '{1}' -Label '{2}' -WaitMinutes 9" -f $PSScriptRoot, $RunDir, $Label)
 exit 0

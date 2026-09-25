@@ -24,6 +24,7 @@ SKILL.md の起動時チェック・A-2〜A-4(技術PM)・B-2・Learning から�
 | **ハングする** | codexは毎回 `Reading additional input from stdin...` を出す。stdinを閉じないと入力待ちで止まる(既知の deadlock: openai/codex#972) | プロンプトは常にファイルからstdinへリダイレクトする(`exec -`) |
 | **`batch file arguments are invalid`** | `codex` を bare で呼ぶと mise 等のシム(`.cmd`)に当たり、バッチ層が複数行引数を壊す | `codex-preflight.ps1` が実体(`node.exe` + `codex.js`、または `codex.exe`)まで解決する |
 | **原因不明のハング** | `--output-schema` / `-o` にPOSIXパスを渡すとWindowsバイナリが解決できない | スクリプトが常にネイティブ絶対パスへ正規化する |
+| **実装役が計画づくりから始める** | ユーザー設定の superpowers プラグインが委譲先にも読み込まれ、codexが最初に `using-superpowers` → `brainstorming` → `writing-plans` のSKILL.mdを読んで設計・計画をやり直そうとする(過去37委譲中36件で発生) | `codex-run.ps1` が既定で `--disable plugins` を付ける(`-c plugins."superpowers@...".enabled=false` では**消えないことを実測**)。さらに `-Role` のロール指示で「実行者であり、設計・計画はしない」と明示する |
 | **委譲が途中で消える** | ターン境界でセッションのプロセスツリーがkillされ、TDDのred段階で止まったまま気づけない | ワーカーを `Win32_Process.Create` で起動し、このシェルのジョブ外に出す。それでも消えた場合は `STATUS: LOST` として**成功と区別する** |
 
 **最重要**: 「プロセスが消えた」は完了条件ではない。**唯一の完了条件は `<label>.exit` が存在すること**であり、成否は `codex-status.ps1` の `STATUS` が決める。
@@ -42,7 +43,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-prefl
 `PREFLIGHT: OK` で終われば、以後の全呼び出しは `-EnvFile "<goal-dir>\codex-env.json"` だけを渡せばよい。
 `PREFLIGHT: FAILED` の場合は `REASON:` 行をそのままユーザーに伝えて**停止する**。特に:
 
-- `MODEL_PROBE: FAILED` → 実装役のモデルがこのアカウントで使えない。**黙って別モデルへ落とさない**。
+- `MODEL_PROBE: FAILED` / `TECHPM_MODEL_PROBE: FAILED` → 実装役(`gpt-6-sol`)/ 技術PM(`gpt-6-astra`)のモデルがこのアカウントで使えない。`not supported when using Codex with a ChatGPT account` はアカウントへの段階展開がまだという意味。**黙って別モデルへ落とさない**。代替はユーザーが指名した場合のみ `-Model` / `-TechPmModel` で渡す。
+  - 例外(ユーザー承認済みの暫定運用): 実装役が**アカウント未展開**で拒否されたときだけ、`-BuilderFallbackModel`(既定 `gpt-6-astra`)で続行し `WARN:` を出す。無効にするには `-BuilderFallbackModel ''`。
 - `SANDBOX_WRITE: FAILED` → 下記「3. 既知の環境問題」を参照。
 
 ### 2-2. 委譲する
@@ -54,6 +56,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
   -PromptFile "<goal-dir>\codex-runs\m1-impl.prompt.md" `
   -WorkDir   "<対象プロジェクトのルート>" `
   -RunDir    "<goal-dir>\codex-runs" `
+  -Role      builder `
   -Effort    "<B-1でFableが選んだ値>" `
   -OutputSchema "<skill-dir>\schemas\impl-report.json" `
   -TimeoutMinutes 60
@@ -61,11 +64,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
 
 すぐに戻る。`RUN: STARTED` と `NEXT:`(そのまま実行できる status コマンド)が出る。
 
+- `-Role` は `builder`(B-2。既定)/ `techpm`(A-2〜A-4)/ `grareco`(Learning)。モデルは codex-env.json から役割別に選ばれる(builder → `model` = `gpt-6-sol`、techpm → `techpmModel` = `gpt-6-astra`)。実行契約の後に役割別のロール指示が自動で入る。`techpm` はサンドボックスが常に `read-only` に固定される。
+- プラグインは既定で無効(`--disable plugins`)。組み込みのシステムスキル(imagegen 等)は残る。プラグインが必要な例外的委譲のみ `-KeepPlugins`。
 - `-Label` は委譲ごとに一意にする(`[A-Za-z0-9._-]+`)。同じラベルで実行中のものがあると起動を拒否する。
-- `-Effort` は `low | medium | high | xhigh | max | ultra`。**`xhigh` 以上は `high` の桁違いのトークンを使い、長時間ハングの報告がある**。B-2ではB-1でFableが選んだ値を使う。実装委譲の基本は `low`、難しい問題のみ `medium`。迷ったら `low`(スクリプトの既定も `low`)。技術PM呼び出しは `max` 固定。
+- `-Effort` は `low | medium | high | xhigh | max | ultra`。**`gpt-6-sol` は `ultra` を持たない**(`none`〜`max`)ため、builderで `ultra` を渡すと `max` に丸めて `WARN:` を出す。**`xhigh` 以上は `high` の桁違いのトークンを使い、長時間ハングの報告がある**。B-2ではB-1でFableが選んだ値を使う。実装委譲の基本は `low`、難しい問題のみ `medium`。迷ったら `low`(スクリプトの既定も `low`)。技術PM呼び出しは `max` 固定。
 - `-OutputSchema` を付けると最終メッセージが `schemas/impl-report.json` に従うJSONになり、status が中身まで検査できる。**B-2では必ず付ける。**
-- **`-Sandbox` は通常指定しない。** プリフライトがこの環境で実際に書き込めると確認したモードが `codex-env.json` から自動で使われる。明示指定は、そのマイルストーンだけ読み取り専用にしたい場合(`read-only`)など例外的な用途に限る。**例外: A-2〜A-4の技術PM呼び出しは必ず `-Sandbox read-only`**(助言役にコードを変更させない。SKILL.md「技術PM(Codex)共通契約」)。
-- プロンプトの先頭には**実行契約**(スコープ外禁止・コミット禁止・要件再定義禁止・否定リスト・最終メッセージが唯一の出力)が自動で差し込まれる。自分で書かなくてよい。
+- **`-Sandbox` は通常指定しない。** プリフライトがこの環境で実際に書き込めると確認したモードが `codex-env.json` から自動で使われる。明示指定は、そのマイルストーンだけ読み取り専用にしたい場合(`read-only`)など例外的な用途に限る。A-2〜A-4の技術PM呼び出しは `-Role techpm` で read-only が強制される(助言役にコードを変更させない。SKILL.md「技術PM(Codex)共通契約」)。
+- プロンプトの先頭には**実行契約**(スコープ外禁止・コミット禁止・要件再定義禁止・否定リスト・最終メッセージが唯一の出力)と**ロール指示**が自動で差し込まれる。自分で書かなくてよい。builderのロール指示は「承認済み計画の実行者であり設計者ではない / `TECHNICAL ASSESSMENT` 節に従う / ブレスト・計画・質問・プロセス系スキル起動をしない / 安全>安定>速度 / アセスが実コードと合わなければ等価な最小調整かblocked」。
 
 ### 2-3. 完了を待つ
 
@@ -140,13 +145,16 @@ Windows で `workspace-write sandbox has no writable root capability SIDs` が�
 
 ## 4. プロンプトに必ず入れる要素(B-2)
 
-実行契約は自動で先頭に付くので、**タスク固有の内容だけ**を書く:
+実行契約とロール指示は自動で先頭に付くので、**タスク固有の内容だけ**を、次の見出しで書く(詳細は SKILL.md B-2):
 
-1. 目的 — このマイルストーンが満たす受け入れ条件(`acceptance_criteria` にそのまま写させるので、検証可能な文にする)
-2. 対象ファイル・変更範囲
-3. 検証要求 — MVP: 受け入れ基準に直結する検証+未知低減に効く検証のみ / 高信頼: テストファースト+単体・結合・lint・型検査
-4. 関連する未検証仮定(`assumptions.md` から)
-5. 出力要求 — 「最終メッセージは指定されたJSONスキーマに従うこと」
+1. `## TECHNICAL ASSESSMENT` — MVP: `tech-assessment.md` の該当 `## M<n>` 節を原文のまま / 高信頼: 承認済みplanの該当タスク本文
+2. `## ACCEPTANCE CRITERIA` — 受け入れ条件(`acceptance_criteria` にそのまま写させるので、検証可能な文にする)
+3. `## SCOPE` — 対象ファイル・変更範囲
+4. `## VERIFICATION` — MVP: 受け入れ基準に直結する検証+未知低減に効く検証のみ / 高信頼: テストファースト+単体・結合・lint・型検査
+5. `## OPEN ASSUMPTIONS` — 関連する未検証仮定(`assumptions.md` から)
+6. `## OUTPUT` — 「最終メッセージは指定されたJSONスキーマに従うこと」
+
+planから転記するときは `REQUIRED SUB-SKILL` / `superpowers:` 等のエージェント向け進め方の指示行を**含めない**。
 
 禁止事項(コミット・要件再定義・否定リスト・`~/.claude/` 等への接触)は**書かなくてよい**。実行契約に含まれている。
 
@@ -163,7 +171,7 @@ Windows で `workspace-write sandbox has no writable root capability SIDs` が�
 | `<label>.last.txt` | 最終メッセージ = 自己検証報告 |
 | `<label>.exit` | 終了コード。**存在=完了** |
 | `<label>.done.json` | 終了コード・タイムアウト有無・所要時間 |
-| `<label>.meta.json` | 起動時のモデル・effort・sandbox・実コマンド |
+| `<label>.meta.json` | 起動時のロール・モデル・effort・sandbox・プラグイン有無・実コマンド |
 | `<label>.err.txt` | stderr |
 
 `*.out.jsonl` は長い実行で大きくなる。リポジトリに含めたくない場合は `.gitignore` に `codex-runs/*.jsonl` を足す(`last.txt` は証拠なので残す)。

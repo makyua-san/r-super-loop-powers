@@ -10,7 +10,15 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$EnvOut,
-    [string]$Model = 'gpt-6-astra',
+    # Builder (B-2 implementation). Recorded as codex-env.json "model".
+    [string]$Model = 'gpt-6-sol',
+    # Tech PM (A-2..A-4 technical assessment, read-only). Recorded as "techpmModel".
+    [string]$TechPmModel = 'gpt-6-astra',
+    # Human-approved interim builder (2026-09-25): used ONLY when the builder model
+    # is refused as "not supported" for this account (gradual rollout). Re-probed on
+    # every preflight, so the builder returns to -Model once it is available.
+    # Pass '' to disable the fallback.
+    [string]$BuilderFallbackModel = 'gpt-6-astra',
     [string]$MinVersion = '0.153.0',
     [int]$ProbeTimeoutSec = 300,
     [switch]$SkipModelProbe,
@@ -186,7 +194,7 @@ if ($auth -eq 'MISSING' -and $SkipModelProbe) {
 # $NameWritableRoots: also pass -c sandbox_workspace_write.writable_roots naming the
 # throwaway probe directory plus -WritableRoot. Used for the retry after the sandbox
 # fails to infer its own roots.
-function Invoke-Probe([string]$Sandbox, [string]$PromptText, [bool]$NameWritableRoots = $false, [string]$Cwd = '') {
+function Invoke-Probe([string]$Sandbox, [string]$PromptText, [bool]$NameWritableRoots = $false, [string]$Cwd = '', [string]$ProbeModel = $Model) {
     $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ('codex-preflight-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $scratch -Force | Out-Null
     $cwdDir = $scratch
@@ -204,9 +212,11 @@ function Invoke-Probe([string]$Sandbox, [string]$PromptText, [bool]$NameWritable
             '-s', $Sandbox,
             '-c', 'approval_policy=never',
             '-c', 'model_reasoning_effort=low',
-            '--skip-git-repo-check'
+            '--skip-git-repo-check',
+            # Same as codex-run.ps1: plugin skills (superpowers) stay out of the run.
+            '--disable', 'plugins'
         )
-        if ($Model) { $probeArgs += @('-m', $Model) }
+        if ($ProbeModel) { $probeArgs += @('-m', $ProbeModel) }
         if ($Sandbox -eq 'workspace-write' -and $NameWritableRoots) {
             $rootsArg = ConvertTo-WritableRootsArg (@($cwdDir) + $WritableRoot)
             if ($rootsArg) { $probeArgs += @('-c', $rootsArg) }
@@ -258,33 +268,61 @@ function Get-SandboxErrorLine($Probe) {
     return ''
 }
 
-# 5a. Does the configured model answer at all for THIS account? A model name can be
-# spelled correctly and still come back as a 400.
+# 5a. Does each configured model answer at all for THIS account? A model name can be
+# spelled correctly and still come back as a 400 (e.g. "not supported when using
+# Codex with a ChatGPT account" while a model is still rolling out).
 Write-Kv 'MODEL' $Model
+Write-Kv 'TECHPM_MODEL' $TechPmModel
 $sandboxWriteOk = $null
 $sandboxMode = 'workspace-write'
 $writableRootsRequired = $false
+$builderFallbackFrom = ''
 if ($SkipModelProbe) {
     Write-Kv 'MODEL_PROBE' 'SKIPPED'
 } else {
-    $r = Invoke-Probe 'read-only' 'Reply with exactly: PREFLIGHT_OK'
-    try {
-        if ($r.timedOut) {
-            Write-Kv 'MODEL_PROBE' 'TIMEOUT'
-            Add-Failure "model probe did not answer within $ProbeTimeoutSec s. codex may be hanging on stdin or the API may be stalled."
-            Exit-Preflight
+    # Interim fallback: only for an account-rollout refusal, never for other errors.
+    if ($BuilderFallbackModel -and $BuilderFallbackModel -ne $Model) {
+        $r0 = Invoke-Probe 'read-only' 'Reply with exactly: PREFLIGHT_OK'
+        try {
+            $ok0 = (-not $r0.timedOut) -and $r0.exitCode -eq 0 -and $r0.completed -and ($r0.text -match 'PREFLIGHT_OK')
+            $refusal = "$($r0.error) $($r0.stderr)" -match 'not supported when using Codex'
+            if (-not $ok0 -and $refusal) {
+                Write-Kv 'MODEL_PROBE_PRIMARY' "UNAVAILABLE ($Model is not rolled out to this account)"
+                $builderFallbackFrom = $Model
+                $Model = $BuilderFallbackModel
+                Write-Kv 'MODEL' "$Model (interim fallback)"
+                Write-Kv 'WARN' "builder runs on the human-approved interim model $Model instead of $builderFallbackFrom. Record it in decisions.md; re-run preflight later to return to $builderFallbackFrom."
+            }
+        } finally {
+            Remove-Item -LiteralPath $r0.dir -Recurse -Force -ErrorAction SilentlyContinue
         }
-        if ($r.exitCode -ne 0 -or -not $r.completed -or ($r.text -notmatch 'PREFLIGHT_OK')) {
-            Write-Kv 'MODEL_PROBE' 'FAILED'
-            $detail = $r.error
-            if (-not $detail) { $detail = ($r.stderr -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 3) -join ' | ' }
-            Add-Failure "model '$Model' did not answer the probe (exit=$($r.exitCode), turn.completed=$($r.completed)). $detail"
-            Add-Failure 'Do not silently fall back to another model -- report this and stop.'
-            Exit-Preflight
+    }
+
+    $probeTargets = @(@{ key = 'MODEL_PROBE'; role = 'builder'; model = $Model })
+    if ($TechPmModel -and $TechPmModel -ne $Model) {
+        $probeTargets += @{ key = 'TECHPM_MODEL_PROBE'; role = 'techpm'; model = $TechPmModel }
+    }
+    foreach ($t in $probeTargets) {
+        $r = Invoke-Probe 'read-only' 'Reply with exactly: PREFLIGHT_OK' $false '' $t.model
+        try {
+            if ($r.timedOut) {
+                Write-Kv $t.key 'TIMEOUT'
+                Add-Failure "$($t.role) model '$($t.model)' did not answer within $ProbeTimeoutSec s. codex may be hanging on stdin or the API may be stalled."
+            } elseif ($r.exitCode -ne 0 -or -not $r.completed -or ($r.text -notmatch 'PREFLIGHT_OK')) {
+                Write-Kv $t.key 'FAILED'
+                $detail = $r.error
+                if (-not $detail) { $detail = ($r.stderr -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 3) -join ' | ' }
+                Add-Failure "$($t.role) model '$($t.model)' did not answer the probe (exit=$($r.exitCode), turn.completed=$($r.completed)). $detail"
+            } else {
+                Write-Kv $t.key 'OK'
+            }
+        } finally {
+            Remove-Item -LiteralPath $r.dir -Recurse -Force -ErrorAction SilentlyContinue
         }
-        Write-Kv 'MODEL_PROBE' 'OK'
-    } finally {
-        Remove-Item -LiteralPath $r.dir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if ($script:Reasons.Count -gt 0) {
+        Add-Failure 'Do not silently fall back to another model -- report this to the human and stop. A different model is used only when the human names it (-Model / -TechPmModel).'
+        Exit-Preflight
     }
 }
 
@@ -383,6 +421,8 @@ $envObj = [ordered]@{
     kind            = $invocation.kind
     version         = $version
     model           = $Model
+    techpmModel     = $TechPmModel
+    builderFallbackFrom = $builderFallbackFrom
     auth            = $auth
     sandboxWriteProbe = $(if ($SkipWriteProbe) { 'SKIPPED' } else { 'RUN' })
     sandboxWriteOk  = $sandboxWriteOk
