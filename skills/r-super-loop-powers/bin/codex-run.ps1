@@ -126,7 +126,19 @@ to avoid them, and the command that proves it works.
 == END ROLE ==
 
 '@
-    grareco = ''
+    # The built-in image_gen tool asks codex to open its own system skill
+    # (~/.codex/skills/.system/imagegen/SKILL.md) first. Contract item 1 forbids every
+    # SKILL.md, so without this exception the grareco run stops on the conflict and no
+    # image is made (lesson-search, 2026-10-01: two runs ended with no grareco.png).
+    grareco = @'
+== ROLE: GRAPHIC RECORDER ==
+EXCEPTION to contract item 1, for this run only: you MAY read the built-in imagegen
+system skill's SKILL.md (under ~/.codex/skills/.system/imagegen/) in order to use your
+built-in image_gen tool. Nothing else under skills/, SKILL.md, ~/.codex/ or ~/.claude/.
+Read only the input file and write only the image file named in the task.
+== END ROLE ==
+
+'@
 }
 
 # Documented effort ladders: Sol and Luna stop at max (no "ultra"). Sending ultra
