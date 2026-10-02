@@ -22,7 +22,7 @@ SKILL.md の起動時チェック・A-2〜A-4(技術PM)・B-5(高信頼の技術
 | **完了を確認できない** | `--json` なしだと stdout には**最終回答しか出ない**ため、進捗も完了イベントも無い。ラッパー末尾の `echo` 完了マーカーはプロセス終了に間に合わないことがある | `--json` で `turn.completed` を受け取る。`<label>.exit` は**最後に、リネームで**書かれるので、存在すれば必ず完了 |
 | **ハングする** | codexは毎回 `Reading additional input from stdin...` を出す。stdinを閉じないと入力待ちで止まる(既知の deadlock: openai/codex#972) | プロンプトは常にファイルからstdinへリダイレクトする(`exec -`) |
 | **`batch file arguments are invalid`** | `codex` を bare で呼ぶと mise 等のシム(`.cmd`)に当たり、バッチ層が複数行引数を壊す | `codex-preflight.ps1` が実体(`node.exe` + `codex.js`、または `codex.exe`)まで解決する |
-| **原因不明のハング** | `--output-schema` / `-o` にPOSIXパスを渡すとWindowsバイナリが解決できない | スクリプトが常にネイティブ絶対パスへ正規化する |
+| **原因不明のハング** | `-o` にPOSIXパスを渡すとWindowsバイナリが解決できない | スクリプトが常にネイティブ絶対パスへ正規化する |
 | **codexがプロセス系スキルを始める** | ユーザー設定の superpowers プラグインが委譲先にも読み込まれ、codexが最初に `using-superpowers` → `brainstorming` → `writing-plans` のSKILL.mdを読んで設計・計画をやり直そうとする(過去37委譲中36件で発生) | `codex-run.ps1` が既定で `--disable plugins` を付ける(`-c plugins."superpowers@...".enabled=false` では**消えないことを実測**)。さらに `-Role` のロール指示でプロセス系スキルを起動しないと明示する |
 | **委譲が途中で消える** | ターン境界でセッションのプロセスツリーがkillされ、TDDのred段階で止まったまま気づけない | ワーカーを `Win32_Process.Create` で起動し、このシェルのジョブ外に出す。それでも消えた場合は `STATUS: LOST` として**成功と区別する** |
 
@@ -69,7 +69,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-status.ps1" `
-  -RunDir "<goal-dir>\codex-runs" -Label "m1-impl" -WaitMinutes 9
+  -RunDir "<goal-dir>\codex-runs" -Label "brainstorm-techpm-1" -WaitMinutes 9
 ```
 
 `-WaitMinutes 9` は完了まで最大9分ブロックする(ツールのタイムアウトに収まる上限)。`RUNNING` が返ったら同じコマンドを繰り返す。
@@ -90,14 +90,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-statu
 
 補助的に出る行:
 
-- `WARN: codex touched N off-limits path(s)` — codexがスキルファイル等を読みに行った兆候。実装より探索に時間を使った可能性がある。
+- `WARN: codex touched N off-limits path(s)` — codexがスキルファイル等を読みに行った兆候。回答より探索に時間を使った可能性がある。
 - `WARN: stderr looks like an auth failure` — `codex login` が必要。
 - `THREAD_ID:` — グラレコの画像回収に使う(SKILL.md Learning 2)。
 
 ### 2-5. 中断する
 
 ```powershell
-... \bin\codex-status.ps1 -RunDir "<goal-dir>\codex-runs" -Label "m1-impl" -Abort
+... \bin\codex-status.ps1 -RunDir "<goal-dir>\codex-runs" -Label "m1-review" -Abort
 ```
 
 プロセスツリーを落とし、exitファイルを書いて中断を記録する。
@@ -119,7 +119,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-statu
 実行契約とロール指示は自動で先頭に付くので、**タスク固有の内容だけ**を書く。
 
 - **techpm**: SKILL.md「技術PM(Codex)共通契約」のプロンプト必須要素
-- **reviewer**: SKILL.md B-5(高信頼)に列挙した入力。特に委譲前の HEAD を渡し、`git diff <base>` で実際の変更を見させる
+- **reviewer**: SKILL.md B-5(高信頼)に列挙した入力。特に委譲前の HEAD と各委譲の `impl-check.ps1` の `CHANGED_FILES_ACTUAL:` 行を渡し、`git diff <base>` と `git status --porcelain --untracked-files=all` で実際の変更を見させる(未追跡の新規ファイルは `git diff` に出ないので直接読ませる)
 - **grareco**: `templates/grareco-prompt.md`
 
 ---
