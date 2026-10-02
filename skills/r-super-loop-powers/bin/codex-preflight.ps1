@@ -244,6 +244,8 @@ if ($SkipModelProbe) {
 $envDir = Split-Path -Parent $EnvOut
 if ($envDir -and -not (Test-Path -LiteralPath $envDir)) { New-Item -ItemType Directory -Path $envDir -Force | Out-Null }
 $envObj = [ordered]@{
+    # 2 = v0.7 layout (one read-only model). codex-run.ps1 warns when it is missing.
+    envSchema  = 2
     kind       = $invocation.kind
     version    = $version
     model      = $Model

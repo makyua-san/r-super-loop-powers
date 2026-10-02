@@ -66,7 +66,7 @@ $ExecutionContract = @'
    money or contracts, auth / security / personal-data handling, and destructive
    changes to an approved design. Report and stop.
 5. YOUR FINAL MESSAGE IS THE ONLY OUTPUT THAT IS READ. Streamed progress is not
-   read back. Put the complete self-verification report in the final message.
+   read back. Put your complete answer in the final message.
 6. If you finish early because you are blocked, say so explicitly in the final
    message. Silence is read as a failed run, not as success.
 7. READ-ONLY. Your sandbox is read-only. Do not create, modify, or delete any file.
@@ -102,8 +102,9 @@ the builder and you fix nothing.
 - Review TECHNICAL quality only: correctness, consistency with the TECHNICAL
   ASSESSMENT / approved plan, risks (security, data loss, compatibility,
   concurrency), and whether the verification really proves the acceptance
-  criteria. Inspect the real change yourself with git diff against the base ref
-  given in the task.
+  criteria. Inspect the real change yourself: run git diff <base> against the
+  base ref given in the task AND git status --porcelain --untracked-files=all,
+  then read untracked files directly (git diff does not show new files).
 - Do NOT judge whether the milestone meets the user's requirements or goal; a
   different reviewer owns that. Do not invoke process skills.
 - For each finding give: severity (HIGH / MEDIUM / LOW), evidence (file:line or
@@ -259,8 +260,12 @@ $warnings = @()
 if (-not $Model) { $Model = [string]$codexEnv.model }
 $legacyKeys = @('techpmModel', 'sandbox', 'sandboxWriteOk', 'writableRoots', 'builderFallbackFrom') |
     Where-Object { $codexEnv.PSObject.Properties.Name -contains $_ }
-if ($legacyKeys -or $codexEnv.model -ne 'gpt-6.1-sol') {
-    $warnings += "codex-env.json was written by a pre-v0.7 preflight (model=$($codexEnv.model); keys: $($legacyKeys -join ',')). Re-run codex-preflight.ps1."
+# envSchema 2 = written by the v0.7 preflight. The model name is NOT a criterion:
+# a model the user named with -Model is legitimate and must not warn forever.
+$envSchema = 0
+if ($codexEnv.PSObject.Properties.Name -contains 'envSchema') { [void][int]::TryParse([string]$codexEnv.envSchema, [ref]$envSchema) }
+if ($legacyKeys -or $envSchema -lt 2) {
+    $warnings += "codex-env.json was written by a pre-v0.7 preflight (envSchema=$envSchema; legacy keys: $($legacyKeys -join ',')). Re-run codex-preflight.ps1."
 }
 if ($Effort -eq 'ultra' -and $NoUltraModels -contains $Model) {
     $warnings += "$Model has no 'ultra' effort; clamped to 'max'."

@@ -32,10 +32,10 @@ function New-Report([hashtable]$Over, [string]$Prefix = 'Done.', [switch]$Raw) {
     return "$Prefix`n$fence" + "json`n$json`n$fence`nThanks."
 }
 
-function Invoke-Check($Repo, [string]$ReportText, [string]$Base) {
+function Invoke-Check($Repo, [string]$ReportText, [string]$Base, [string[]]$Extra = @()) {
     $rf = Join-Path ([IO.Path]::GetTempPath()) ('implcheck-report-' + [guid]::NewGuid().ToString('N') + '.md')
     [IO.File]::WriteAllText($rf, $ReportText, (New-Object Text.UTF8Encoding($false)))
-    $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $script -ReportFile $rf -WorkDir $Repo -BaseRef $Base 2>&1 | Out-String
+    $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $script -ReportFile $rf -WorkDir $Repo -BaseRef $Base @Extra 2>&1 | Out-String
     $code = $LASTEXITCODE
     Remove-Item -LiteralPath $rf -Force -ErrorAction SilentlyContinue
     return @{ Out = $out; Code = $code }
@@ -107,6 +107,67 @@ if ($res.Out -match 'unreported change') { Write-Output 'FAIL backslash-absolute
 $r = New-Repo; $b = Get-Head $r; Set-Change $r
 Assert-Status 'short-baseref-ok' (Invoke-Check $r (New-Report @{}) $b.Substring(0, 7)) 'OK'
 Assert-Status 'bad-baseref' (Invoke-Check $r (New-Report @{}) 'deadbeef') 'MALFORMED'
+
+function Assert-NoMatch([string]$Name, $Result, [string]$Pattern) {
+    if ($Result.Out -notmatch $Pattern) { Write-Output "PASS $Name" }
+    else { Write-Output "FAIL $Name (unexpected match: $Pattern)`n$($Result.Out)"; $script:failures++ }
+}
+function Invoke-Snapshot($Repo, [string]$OutFile) {
+    $out = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script -Snapshot -WorkDir $Repo -OutFile $OutFile 2>&1 | Out-String
+    return @{ Out = $out; Code = $LASTEXITCODE }
+}
+function New-PreFile { return (Join-Path ([IO.Path]::GetTempPath()) ('implcheck-pre-' + [guid]::NewGuid().ToString('N') + '.txt')) }
+
+# F1: changes that were already uncommitted before the delegation are not this run's work.
+$r = New-Repo; $b = Get-Head $r; Set-Change $r; $pre = New-PreFile
+$s = Invoke-Snapshot $r $pre
+$snapText = ''; if (Test-Path $pre) { $snapText = [IO.File]::ReadAllText($pre) }
+if ($s.Code -eq 0 -and $snapText -match "(?m)^a\.txt\t[0-9a-f]{40}\r?$") { Write-Output 'PASS snapshot-writes-path-and-hash' }
+else { Write-Output "FAIL snapshot-writes-path-and-hash (exit $($s.Code))`n$($s.Out)`n$snapText"; $script:failures++ }
+$res = Invoke-Check $r (New-Report @{}) $b @('-PreexistingFile', $pre)
+Assert-Status 'preexisting-no-new-change' $res 'INCOMPLETE'
+Assert-Match 'preexisting-listed' $res '(?m)^PREEXISTING_UNCHANGED: a\.txt'
+
+$r = New-Repo; $b = Get-Head $r; Set-Change $r; $pre = New-PreFile
+$null = Invoke-Snapshot $r $pre
+[IO.File]::WriteAllText((Join-Path $r 'a.txt'), "changed again`n")
+Assert-Status 'preexisting-modified-again' (Invoke-Check $r (New-Report @{}) $b @('-PreexistingFile', $pre)) 'OK'
+
+$r = New-Repo; $b = Get-Head $r; Set-Change $r 'old-work.txt'; $pre = New-PreFile
+$null = Invoke-Snapshot $r $pre
+Set-Change $r 'new.txt'
+$res = Invoke-Check $r (New-Report @{ changed_files = @('new.txt') }) $b @('-PreexistingFile', $pre)
+Assert-Status 'preexisting-plus-new-file' $res 'OK'
+Assert-NoMatch 'preexisting-plus-new-file-no-warn' $res 'unreported change: old-work\.txt'
+Assert-Match 'preexisting-plus-new-file-actual' $res '(?m)^CHANGED_FILES_ACTUAL: new\.txt\s*$'
+
+$r = New-Repo; $b = Get-Head $r; Set-Change $r
+Assert-Status 'preexisting-file-missing' (Invoke-Check $r (New-Report @{}) $b @('-PreexistingFile', (New-PreFile))) 'MALFORMED'
+$out = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script -Snapshot -WorkDir $r 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0) { Write-Output 'PASS snapshot-needs-outfile' } else { Write-Output "FAIL snapshot-needs-outfile`n$out"; $script:failures++ }
+$out = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script -WorkDir $r -BaseRef $b 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0) { Write-Output 'PASS check-needs-reportfile' } else { Write-Output "FAIL check-needs-reportfile`n$out"; $script:failures++ }
+
+# F5: non-ASCII file names must match between the report and git.
+$r = New-Repo; $b = Get-Head $r
+$jp = (-join ([char]0x30C6, [char]0x30B9, [char]0x30C8)) + '.txt'
+Set-Change $r $jp
+$res = Invoke-Check $r (New-Report @{ changed_files = @($jp) }) $b
+Assert-Status 'non-ascii-path' $res 'OK'
+Assert-NoMatch 'non-ascii-path-no-warn' $res '(?m)^WARN:'
+
+# F6: a reported path that this run did not change is flagged.
+$r = New-Repo; $b = Get-Head $r; Set-Change $r
+$res = Invoke-Check $r (New-Report @{ changed_files = @('a.txt', 'ghost.txt') }) $b
+Assert-Status 'reported-but-unchanged-still-ok' $res 'OK'
+Assert-Match 'reported-but-unchanged-warn' $res '(?m)^WARN: reported but unchanged: ghost\.txt'
+Assert-NoMatch 'reported-and-changed-no-warn' $res 'reported but unchanged: a\.txt'
+
+# F10: an outcome that is neither PASS nor SKIPPED is not a pass.
+$r = New-Repo; $b = Get-Head $r; Set-Change $r
+Assert-Status 'verification-unknown-outcome' (Invoke-Check $r (New-Report @{ verification = @(@{ command = 'x'; outcome = 'DONE'; evidence = '-' }) }) $b) 'INCOMPLETE'
+Assert-Status 'verification-missing-outcome' (Invoke-Check $r (New-Report @{ verification = @(@{ command = 'x'; evidence = '-' }) }) $b) 'INCOMPLETE'
+Assert-Status 'verification-pass-lowercase-ok' (Invoke-Check $r (New-Report @{ verification = @(@{ command = 'x'; outcome = 'pass'; evidence = '-' }) }) $b) 'OK'
 
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
 Write-Output 'ALL PASS'
