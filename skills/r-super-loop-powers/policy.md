@@ -65,6 +65,8 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 | 技術レビュー | Codex `gpt-6.1-sol` / `max` / read-only(`-Role reviewer`) | 実装に関与していない立場で、正しさ・アセスとの整合・技術リスク・検証の妥当性をレビューする(`TECH_REVIEW: OK / CONCERNS`) | **高信頼のB-5のみ** | 要件適合の判定(B-6のFableの仕事)、コード変更 |
 | 画像生成(Codex組み込み image_gen ツール) | Codex `gpt-6.1-sol` / `medium` / read-only(`-Role grareco`) | グラフィックレコード(生成のみ。保存はOpusが回収) | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)に呼び出し | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
 
+各ロールの立場・受け渡し・決めること・決めないこと・判定のされ方は `references/roles.md`(ロール憲章)にまとめてある。各ロールへはその該当節を原文のまま配る(実装役: エージェント定義に埋め込み / codex: `codex-run.ps1` が差し込み / Fable: Opus が依頼文の冒頭に貼る)。この表と憲章が食い違う場合は、この表と SKILL.md が正。
+
 ## Fableを呼ぶ場面(これ以外では呼ばない)
 
 1. ヒアリング(MVP・A-1a): 質問の設計・深掘り・充足判定を行うとき(代理Fable・往復)
