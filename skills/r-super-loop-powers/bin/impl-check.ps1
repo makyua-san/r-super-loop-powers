@@ -70,8 +70,10 @@ foreach ($u in @($report.unresolved)) { if ($u) { Write-Kv 'UNRESOLVED' $u } }
 # --- 2. what git actually shows -----------------------------------------------
 $ErrorActionPreference = 'Continue'
 $head = (& git -C $WorkDir rev-parse HEAD 2>$null | Out-String).Trim()
+$baseFull = (& git -C $WorkDir rev-parse --verify "$($BaseRef.Trim())^{commit}" 2>$null | Out-String).Trim()
 $porcelain = @(& git -C $WorkDir status --porcelain --untracked-files=all 2>$null | Where-Object { $_ })
 $ErrorActionPreference = 'Stop'
+if (-not $baseFull) { Complete-Check 'MALFORMED' "BaseRef '$BaseRef' does not resolve to a commit" 'Pass the git HEAD recorded before the delegation (impl-runs/<label>.base.txt).' }
 
 $actual = @()
 foreach ($line in $porcelain) {
@@ -92,7 +94,7 @@ Write-Kv 'REPORT' ("blocked=$($report.blocked) committed=$($report.committed) ve
 foreach ($u in ($unmet | Select-Object -First 5)) { Write-Kv 'CRITERION_UNMET' ("[$($u.status)] $($u.criterion)") }
 
 # --- 3. verdict (first match wins; order is the spec's section 4) --------------
-if ($report.committed -eq $true -or ($head -and $head -ne $BaseRef.Trim())) {
+if ($report.committed -eq $true -or ($head -and $head -ne $baseFull)) {
     Complete-Check 'CONTRACT_VIOLATION' "the builder committed (committed=$($report.committed), HEAD $BaseRef -> $head). Commits belong to the orchestrator." 'Inspect git log / git status first, undo the commit if unwanted, then decide whether to keep the work.'
 }
 if ($report.blocked -eq $true) {

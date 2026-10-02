@@ -104,6 +104,10 @@ $res = Invoke-Check $r (New-Report @{ changed_files = @($abs) }) $b
 Assert-Status 'backslash-absolute-paths' $res 'OK'
 if ($res.Out -match 'unreported change') { Write-Output 'FAIL backslash-absolute-paths-no-warn'; $script:failures++ } else { Write-Output 'PASS backslash-absolute-paths-no-warn' }
 
+$r = New-Repo; $b = Get-Head $r; Set-Change $r
+Assert-Status 'short-baseref-ok' (Invoke-Check $r (New-Report @{}) $b.Substring(0, 7)) 'OK'
+Assert-Status 'bad-baseref' (Invoke-Check $r (New-Report @{}) 'deadbeef') 'MALFORMED'
+
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
 Write-Output 'ALL PASS'
 exit 0
