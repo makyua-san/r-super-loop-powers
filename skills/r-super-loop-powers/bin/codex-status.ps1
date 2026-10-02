@@ -228,7 +228,7 @@ if ($null -ne $exitCode) {
         $next = 'Treat as a failed run. Re-run the delegation.'
     } elseif ($finalBytes -eq 0) {
         $status = 'SUSPECT'
-        $reason = 'the run completed but wrote no final message, so there is no self-verification report to accept.'
+        $reason = 'the run completed but wrote no final message, so there is no answer to accept.'
         $next = 'Treat as a failed run. Re-run, and keep contract item 5 (final message is the only output) in the prompt.'
     } else {
         $status = 'OK'

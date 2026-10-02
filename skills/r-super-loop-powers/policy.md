@@ -22,13 +22,13 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 |---|---|---|
 | ヒアリング(A-1a) | Fable駆動の往復ヒアリング(無自覚の既知の表面化。目安2〜4往復) | 初回ラウンド(開発タイプ確認)のみ |
 | Goal Frame / Goal Gate(A-1b / A-6) | 実施(表面化した既知+未知マップ+強度+終了条件+Checkpoint配置判定) | 実施(未知マップ+強度+終了条件を含む) |
-| ブレスト〜Plan(A-2〜A-4) | superpowers:brainstormingを**Fable代理回答(ユーザー目線)+技術PM回答(HOW・Codex astra / max)+A-4末の実装アセス**で実施(人間はASK_HUMAN時のみ。最終の設計承認は代理Fable) | 人間参加のsuperpowers:brainstorming(技術PMは人間が求めた場合のみ) |
+| ブレスト〜Plan(A-2〜A-4) | superpowers:brainstormingを**Fable代理回答(ユーザー目線)+技術PM回答(HOW・Codex gpt-6.1-sol / max)+A-4末の実装アセス**で実施(人間はASK_HUMAN時のみ。最終の設計承認は代理Fable) | 人間参加のsuperpowers:brainstorming(技術PMは人間が求めた場合のみ) |
 | Human Goal Plan承認(A-8) | WHATレベル(ゴール解釈・要件・制約・Checkpoint配置・仮定台帳サマリ) | 従来(spec/planレビュー含む) |
 | マイルストーン開始確認(B-1・Fable) | 実施(軽量) | 同左 |
-| 実装委譲(B-2) | マイルストーン単位でまとめて codex exec に委譲可(タスク細分化しない) | タスク分解して個別に委譲 |
-| タスク単位の受け入れ(B-3) | codex自己検証報告の確認のみ(diff精読なし) | Opusメインがdiffを確認 |
+| 実装委譲(B-2) | マイルストーン単位でまとめて実装役(Sonnet 5.5)に委譲可(タスク細分化しない) | タスク分解して個別に委譲 |
+| タスク単位の受け入れ(B-3) | `impl-check.ps1` の STATUS と自己検証報告の確認のみ(diff精読なし) | `impl-check.ps1` の STATUS(技術レビューは全タスク OK 後にマイルストーン単位で B-5) |
 | テスト要求(B-2) | 受け入れ基準に直結する検証+未知低減に効く検証のみ | 単体・結合・lint・型検査をフル要求 |
-| 独立レビュー(B-5) | 省略(Opusメインがsubmission作成時にセルフチェック+decisions.md確定) | Opusサブで実施(PL-003)+decisions.md確定 |
+| 独立レビュー(B-5) | 省略(Opusメインがsubmission作成時にセルフチェック+decisions.md確定) | codex gpt-6.1-sol による**技術レビュー**(PL-003)+decisions.md確定。要件適合はB-6のFable |
 | Implementation Gate(B-6・Fable) | 実施(適合性+残存未知の許容性)。非CheckpointはPASS後に人間承認なしで次マイルストーンへ | 実施(適合性+残存未知の許容性) |
 | Human Report / Acceptance(B-7 / B-8) | **Checkpoint到達時のみ**(評価パッケージ) | マイルストーン毎 |
 | コミット | マイルストーン毎に中間コミット、Checkpoint ACCEPTで確定 | ACCEPT後のみ |
@@ -59,11 +59,11 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 |---|---|---|---|---|
 | 人間 | — | 意図の提示、ヒアリング回答(暗黙の前提・期待の表面化に協力)、具体物の評価とフィードバック、最終受け入れ、優先順位判断 | Goal Seed入力、ヒアリング回答、ループ強度の確定、A-8承認(MVPはWHATレベル)、ASK_HUMAN応答、Checkpoint受け入れテスト | 生diffの最初からの精読を前提にしない。答えを持たない問い(HOW)への回答を強制されない |
 | Fable | Fable(`Agent model: fable`) | 全体責任者。ヒアリング駆動(無自覚の既知の探索)、入口の基準設定(Goal Frame・強度提案)、MVPでは**代理ブレスト回答**(人間の代理として**ユーザー目線**の問いに回答し、設計承認を行う。HOWの技術評価は技術PMの見解を前提にする)、マイルストーン開始確認、承認ゲート(適合性+残存未知の許容性+仮定の事実扱いチェック)、エスカレーション判定(DECIDE / ASK_HUMAN)、Human REJECT後の戻り先決定 | サブエージェントとしてのみ起動。**代理Fable**(A-1a〜A-4。SendMessage継続で文脈保持)と**ゲート・判断Fable**(A-6 / B系。呼び出し毎に新規インスタンス+最小コンテキスト)を分離 | ブレスト・仕様・実装・レポートの**本文作成**。自分が代理回答した設計のゲート判定(自己承認) |
-| Opus | **Opus 5.5**(メイン: `/model opus`、サブ: `Agent model: opus`。aliasは最新Opus=5.5に解決) | メインセッション。**Solution仮説の設計責任**。整理・仕様化・計画・仮定台帳の管理・decisions.md・承認資料・評価パッケージ・振り返り・確定処理。代理ブレストでの問いの振り分け(WHAT→代理Fable / HOW→技術PM)。高信頼強度では独立レビュー(サブ) | 常駐 | ゴール変更の独断確定 |
-| 技術PM | Codex `gpt-6-astra` / `max` / read-only(`-Role techpm`) | 実装責任者として、HOWに係るQAへ回答する(実装方式・技術選択・構成と分割・技術リスク・実現性・検証可能性)。MVPでは A-4末にマイルストーン別の**実装アセス**(`tech-assessment.md`)を出し、実装方式を1つに決め切る | MVPの代理ブレスト(A-2〜A-4)で、OpusがHOWの問いを束ねて呼び出す(1ラウンド=1回)+実装アセス1回。高信頼では人間が求めた場合のみ | コード変更・コミット。ユーザー価値・好み・優先順位の決定(`NEEDS_USER_VIEW:` で代理Fableへ返す)。設計承認 |
-| Codex(実装役) | Codex `gpt-6-sol` / B-1でFableが選択(`low`〜`max`。`ultra` は無い。`codex-run.ps1` の既定は `low`)/ `-Role builder` | **実行者**。技術PMのアセス(高信頼では人間承認済みのplan)に従って、安全>安定>速度の順で実装し、検証し、自己検証報告を返す | マイルストーン単位(MVP)またはタスク単位(高信頼)で呼び出し。superpowers等のプラグインは委譲ごとに無効化 | コミット、要件の再定義、否定リスト該当の自律判断。**設計・計画・選択肢提示のやり直し**(ブレスト・writing-plans等のプロセス系スキルの起動を含む) |
-| 画像生成(Codex組み込み image_gen ツール) | Codex / `medium` | グラフィックレコード | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)に呼び出し | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
-| Sonnet | — | 将来枠(未使用)。軽量探索・補助実装の候補 | — | 必須モデルとして固定しない |
+| Opus | **Opus 5.5**(メイン: `/model opus`、サブ: `Agent model: opus`。aliasは最新Opus=5.5に解決) | メインセッション。**Solution仮説の設計責任**。整理・仕様化・計画・仮定台帳の管理・decisions.md・承認資料・評価パッケージ・振り返り・確定処理。代理ブレストでの問いの振り分け(WHAT→代理Fable / HOW→技術PM) | 常駐 | ゴール変更の独断確定 |
+| 技術PM | Codex `gpt-6.1-sol` / `max` / read-only(`-Role techpm`) | 実装責任者として、HOWに係るQAへ回答する(実装方式・技術選択・構成と分割・技術リスク・実現性・検証可能性)。MVPでは A-4末にマイルストーン別の**実装アセス**(`tech-assessment.md`)を出し、実装方式を1つに決め切る | MVPの代理ブレスト(A-2〜A-4)で、OpusがHOWの問いを束ねて呼び出す(1ラウンド=1回)+実装アセス1回。高信頼では人間が求めた場合のみ | コード変更・コミット。ユーザー価値・好み・優先順位の決定(`NEEDS_USER_VIEW:` で代理Fableへ返す)。設計承認 |
+| 実装役 | Sonnet 5.5(プラグイン同梱エージェント `r-super-loop-powers:builder`、`claude-sonnet-5-5`) | **実行者**。技術PMのアセス(高信頼では人間承認済みのplan)に従って、安全>安定>速度の順で実装し、検証し、自己検証報告(impl-report JSON)を返す | マイルストーン単位(MVP)またはタスク単位(高信頼)で呼び出し。Skill / Agent ツールを持たない | コミット、要件の再定義、否定リスト該当の自律判断。**設計・計画・選択肢提示のやり直し** |
+| 技術レビュー | Codex `gpt-6.1-sol` / `max` / read-only(`-Role reviewer`) | 実装に関与していない立場で、正しさ・アセスとの整合・技術リスク・検証の妥当性をレビューする(`TECH_REVIEW: OK / CONCERNS`) | **高信頼のB-5のみ** | 要件適合の判定(B-6のFableの仕事)、コード変更 |
+| 画像生成(Codex組み込み image_gen ツール) | Codex `gpt-6.1-sol` / `medium` / read-only(`-Role grareco`) | グラフィックレコード(生成のみ。保存はOpusが回収) | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)に呼び出し | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
 
 ## Fableを呼ぶ場面(これ以外では呼ばない)
 
@@ -80,6 +80,10 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 1. 代理ブレスト(MVP・A-2〜A-4): HOWに係る問いが出たとき(問いを束ねて1ラウンド1回)
 2. 高信頼強度で、人間が技術的見解を求めたとき
 
+## 技術レビューを呼ぶ場面(これ以外では呼ばない)
+
+1. 高信頼強度のB-5で、そのマイルストーンの全タスクの `impl-check.ps1` が `STATUS: OK` になった後(**マイルストーンごとに1回**。ラベル `m<n>-review`。CONCERNSで再委譲した場合は解消後に再レビュー `m<n>-review-2` …)
+
 ## Fableを原則呼ばない場面
 
 - Brainstorming / Spec / Plan の**本文作成**(MVPの代理ブレストでもFableは回答・承認のみ。本文はOpusが書く)
@@ -93,17 +97,17 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 
 | ID | ポリシー | 要件 |
 |---|---|---|
-| PL-001 | Default roles | Fable=責任/判定/ユーザー目線の代理回答、Opus 5.5=整理/仕様/レビュー/報告、Codex astra=技術PM(HOW回答・実装アセス)/Codex sol=実装(アセスに従う実行者)をデフォルトとする |
+| PL-001 | Default roles | Fable=責任/判定/ユーザー目線の代理回答、Opus 5.5=整理/仕様/報告、Codex gpt-6.1-sol=技術PM(HOW回答・実装アセス)/技術レビュー(高信頼)/グラレコ(いずれも読み取り専用)、Sonnet 5.5=実装(アセスに従う実行者)をデフォルトとする |
 | PL-002 | No Fable by default | 「高性能だから」という理由だけでFableへ上げない。メインセッションはOpus 5.5で運用する |
-| PL-003 | Independent review | **高信頼強度では**、Fable提出前に実装非関与のOpus 5.5サブエージェントが独立レビューする。MVP強度ではOpusメインのセルフチェックで代替する |
+| PL-003 | Independent review | **高信頼強度では**、Fable提出前に実装非関与の codex `gpt-6.1-sol`(`-Role reviewer`)が技術観点で独立レビューする。要件適合はB-6のFableゲートが判定する。MVP強度ではOpusメインのセルフチェックで代替する |
 | PL-004 | Evidence first | 承認要求には検証証拠・残存未知リスト・未解決事項を必ず含める。推測だけでPASSを求めない |
 | PL-005 | Human after AI gate | 人間受け入れはFable PASS後に行う(MVPはCheckpoint到達時のみ) |
 | PL-006 | Human rejection routing | Human REJECTはFableへ戻し、戻り工程をFableが決める |
-| PL-007 | Budget observability | fable / opus-sub / codex-techpm / codex の呼び出し(代理FableとのSendMessage往復を含む)を call-log.md に記録し、Opus:Fable ≈ 5:1 を目安に振り返る。MVPのヒアリング・代理ブレスト期(A-1a〜A-4)はfable往復が構造的に増えるため、目安は**ワークフローB以降**に適用する |
+| PL-007 | Budget observability | fable / codex-techpm / codex-review / codex-grareco / sonnet-builder の呼び出し(代理FableとのSendMessage往復を含む)を call-log.md に記録し、Opus:Fable ≈ 5:1 を目安に振り返る。MVPのヒアリング・代理ブレスト期(A-1a〜A-4)はfable往復が構造的に増えるため、目安は**ワークフローB以降**に適用する |
 | PL-008 | No forced ratio | 比率は目標であり、品質や安全に必要なFable呼び出しを禁止しない |
 | PL-009 | Context minimization | Fableへは goal-frame + 対象文書 + 仮定台帳の関連部分(+ 必要ならhearing-logの関連部分)のみを渡す。全コード・全会話を常時ロードしない。代理Fableは自インスタンス内の文脈保持のみ許容 |
 | PL-010 | Human cognitive load | 人間向け成果物は、ゴール → 結果 → 証拠 → リスク → 確認手順の順で構造化し、確定事項と仮説による決定を区別する(判断の内訳) |
-| PL-011 | Delegation is verified, not assumed | codex委譲の成否は `bin/codex-status.ps1` の `STATUS: OK` でのみ判定する。プロセスの消滅・自己検証報告の存在・報告本文の印象を成功の根拠にしない。`OK` 以外は不合格として扱い、実装済みとして下流工程(submission / ゲート / コミット)へ進めない。呼び出し規約は `references/codex-invocation.md` |
+| PL-011 | Delegation is verified, not assumed | 委譲の成否は機械判定でのみ決める: codex は `bin/codex-status.ps1`、実装役は `bin/impl-check.ps1` の `STATUS: OK`。プロセスの消滅・自己検証報告の存在・報告本文の印象を成功の根拠にしない。`OK` 以外は不合格として扱い、実装済みとして下流工程(submission / ゲート / コミット)へ進めない。codex の呼び出し規約は `references/codex-invocation.md`、実装役は SKILL.md B-2 |
 
 ## エスカレーション発火条件(いずれかを検出したらFableへ)
 
@@ -122,6 +126,6 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 
 ## 観測
 
-- call-log.md 形式: `YYYY-MM-DD HH:MM | fable|opus-sub|codex-techpm|codex | フェーズ | 目的`(1呼び出し1行。代理FableとのSendMessage往復も1往復1行)
+- call-log.md 形式: `YYYY-MM-DD HH:MM | fable|codex-techpm|codex-review|codex-grareco|sonnet-builder | フェーズ | 目的`(1呼び出し1行。代理FableとのSendMessage往復も1往復1行)
 - Opus 5.5メインセッション自身の消費は記録対象外(常駐のため)
 - Retrospective 作成時に、呼び出し比率(5:1目安・ワークフローB以降)に加えて、ループ回数・主要フェーズ所要時間(call-logの時刻から概算)・発見された未知を記載する。ハード制限にしない(PL-008)

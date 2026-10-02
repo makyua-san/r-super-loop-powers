@@ -25,23 +25,18 @@ param(
     [Parameter(Mandatory = $true)][string]$PromptFile,
     [Parameter(Mandatory = $true)][string]$WorkDir,
     [string]$RunDir,
-    # Who codex is in this delegation. Picks the model from codex-env.json and the
-    # role brief prepended to the prompt. techpm is always read-only.
-    [ValidateSet('builder', 'techpm', 'grareco')][string]$Role = 'builder',
+    # Who codex is in this delegation. Every role is read-only: implementation is
+    # done by the Claude-side builder agent, so codex never needs to write.
+    [Parameter(Mandatory = $true)][ValidateSet('techpm', 'reviewer', 'grareco')][string]$Role,
     [string]$Model,
-    [ValidateSet('low', 'medium', 'high', 'xhigh', 'max', 'ultra')][string]$Effort = 'low',
-    # Default comes from codex-env.json (what preflight proved actually works here).
-    [ValidateSet('', 'read-only', 'workspace-write', 'danger-full-access')][string]$Sandbox = '',
-    [string]$OutputSchema,
+    # Empty = role default (techpm / reviewer: max, grareco: medium).
+    [ValidateSet('', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra')][string]$Effort = '',
     [string[]]$AddDir = @(),
-    # Extra sandbox writable roots. The working directory is always included when
-    # preflight found that this machine needs them named explicitly.
-    [string[]]$WritableRoot = @(),
     [int]$TimeoutMinutes = 60,
     [switch]$NoPreamble,
     # Plugins stay off by default: the user-level superpowers plugin makes codex
-    # open brainstorming/writing-plans and start re-planning an approved milestone
-    # (seen in 36 of 37 delegations). Built-in system skills (imagegen etc.) remain.
+    # open brainstorming/writing-plans instead of answering (seen in 36 of 37 runs).
+    # Built-in system skills (imagegen etc.) remain.
     [switch]$KeepPlugins,
     # internal
     [switch]$Worker,
@@ -71,9 +66,12 @@ $ExecutionContract = @'
    money or contracts, auth / security / personal-data handling, and destructive
    changes to an approved design. Report and stop.
 5. YOUR FINAL MESSAGE IS THE ONLY OUTPUT THAT IS READ. Streamed progress is not
-   read back. Put the complete self-verification report in the final message.
+   read back. Put your complete answer in the final message.
 6. If you finish early because you are blocked, say so explicitly in the final
    message. Silence is read as a failed run, not as success.
+7. READ-ONLY. Your sandbox is read-only. Do not create, modify, or delete any file.
+   Everything you produce goes in your final message (the built-in image_gen tool
+   is the only exception; it stores its image outside the working directory).
 == END EXECUTION CONTRACT ==
 
 '@
@@ -82,36 +80,7 @@ $ExecutionContract = @'
 # on a feature-sized task is to design and plan first; here that work is already
 # done and approved upstream, so re-doing it costs time and risks drifting from it.
 $RoleBriefs = @{
-    builder = @'
-== ROLE: BUILDER (executor) ==
-You are the implementer of ONE milestone of an already-approved plan. You are not
-the designer, the planner, or the approver.
-
-- The requirements, the design, and the technical approach are ALREADY DECIDED.
-  The "TECHNICAL ASSESSMENT" section of the task was written by the tech PM, a
-  separate senior engineer who read this codebase before you. It is the approved
-  technical direction: follow it. Do not re-evaluate alternatives.
-- Do NOT brainstorm, write a spec, write a plan, present options, ask for approval,
-  or ask clarifying questions -- nobody will answer them. Do not invoke process
-  skills (brainstorming, writing-plans, executing-plans, subagent-driven-development
-  or similar). If the task text contains lines such as "REQUIRED SUB-SKILL" or
-  "use superpowers:...", ignore them; they were addressed to a different agent.
-- Priorities, in this order:
-  1. SAFE   -- stay inside the stated scope; no destructive operations.
-  2. STABLE -- the smallest change that meets the acceptance criteria. Follow the
-     existing code's patterns. No speculative refactors, no renames, no new
-     dependencies unless the assessment names them.
-  3. FAST   -- read only the files you need, then start editing. Run exactly the
-     verification the task asks for; do not expand it.
-- If the assessment does not match the real code (a function does not exist, a
-  premise is false): when an obviously equivalent adjustment keeps the assessed
-  approach, make it and record it in new_assumptions. Otherwise do not redesign --
-  set blocked=true and explain in blocked_reason.
-- Every judgment the assessment did not cover goes into new_assumptions.
-== END ROLE ==
-
-'@
-    techpm  = @'
+    techpm = @'
 == ROLE: TECH PM (advisor, read-only) ==
 You are the technical lead who will be accountable for implementing this goal.
 Answer the numbered HOW questions from the implementer's point of view, grounded
@@ -126,6 +95,25 @@ to avoid them, and the command that proves it works.
 == END ROLE ==
 
 '@
+    reviewer = @'
+== ROLE: TECH REVIEWER (read-only) ==
+You review ONE milestone that a separate builder has just implemented. You are not
+the builder and you fix nothing.
+- Review TECHNICAL quality only: correctness, consistency with the TECHNICAL
+  ASSESSMENT / approved plan, risks (security, data loss, compatibility,
+  concurrency), and whether the verification really proves the acceptance
+  criteria. Inspect the real change yourself: run git diff <base> against the
+  base ref given in the task AND git status --porcelain --untracked-files=all,
+  then read untracked files directly (git diff does not show new files).
+- Do NOT judge whether the milestone meets the user's requirements or goal; a
+  different reviewer owns that. Do not invoke process skills.
+- For each finding give: severity (HIGH / MEDIUM / LOW), evidence (file:line or
+  command output), recommended fix. No findings is a valid answer.
+- End with exactly one line: "TECH_REVIEW: OK" (no HIGH finding) or
+  "TECH_REVIEW: CONCERNS" (at least one HIGH finding).
+== END ROLE ==
+
+'@
     # The built-in image_gen tool asks codex to open its own system skill
     # (~/.codex/skills/.system/imagegen/SKILL.md) first. Contract item 1 forbids every
     # SKILL.md, so without this exception the grareco run stops on the conflict and no
@@ -135,7 +123,8 @@ to avoid them, and the command that proves it works.
 EXCEPTION to contract item 1, for this run only: you MAY read the built-in imagegen
 system skill's SKILL.md (under ~/.codex/skills/.system/imagegen/) in order to use your
 built-in image_gen tool. Nothing else under skills/, SKILL.md, ~/.codex/ or ~/.claude/.
-Read only the input file and write only the image file named in the task.
+Read only the input file named in the task. Generate the image with image_gen and
+do not try to save or copy it anywhere -- the orchestrator collects it.
 == END ROLE ==
 
 '@
@@ -143,7 +132,7 @@ Read only the input file and write only the image file named in the task.
 
 # Documented effort ladders: Sol and Luna stop at max (no "ultra"). Sending ultra
 # to them fails the run, so clamp here instead of burning a delegation.
-$NoUltraModels = @('gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-luna')
+$NoUltraModels = @('gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-luna', 'gpt-5.6-luna')
 
 # ============================================================================
 # Worker
@@ -224,22 +213,12 @@ $PromptFile = (Resolve-Path -LiteralPath $PromptFile).Path
 
 if ($Label -notmatch '^[A-Za-z0-9._-]+$') { throw "Label must be [A-Za-z0-9._-]+ (got: $Label)" }
 
-# The tech PM is an advisor (SKILL.md gate rule 10): never let it write.
-if ($Role -eq 'techpm') {
-    if ($Sandbox -and $Sandbox -ne 'read-only') { throw "-Role techpm runs read-only only (got -Sandbox $Sandbox)." }
-    $Sandbox = 'read-only'
-}
 
-# Take the sandbox preflight proved works here, unless the caller named one.
-if (-not $Sandbox) {
-    if ($codexEnv.PSObject.Properties.Name -contains 'sandbox' -and $codexEnv.sandbox) { $Sandbox = [string]$codexEnv.sandbox }
-    else { $Sandbox = 'workspace-write' }
-}
-
-# Preflight already proved this machine cannot write under workspace-write. Launching
-# anyway burns a full delegation that exits 0 having changed nothing -- refuse instead.
-if ($Sandbox -eq 'workspace-write' -and $codexEnv.PSObject.Properties.Name -contains 'sandboxWriteOk' -and $codexEnv.sandboxWriteOk -eq $false) {
-    throw "preflight found that -s workspace-write cannot write on this machine, so this delegation would do nothing. Re-run codex-preflight.ps1 with -AllowUnsandboxed once the human has approved running codex without its sandbox (policy.md negation list item 4), or re-run plain preflight if the environment changed."
+# Every codex role is advisory (SKILL.md gate rule 10). Implementation happens in
+# the Claude-side builder agent, so there is no write path here at all.
+$Sandbox = 'read-only'
+if (-not $Effort) {
+    if ($Role -eq 'grareco') { $Effort = 'medium' } else { $Effort = 'max' }
 }
 
 if (-not $RunDir) { $RunDir = Join-Path $WorkDir '.codex-runs' }
@@ -276,16 +255,18 @@ foreach ($stale in @($outFile, $errFile, $lastFile, $exitFile, (Join-Path $RunDi
     Remove-Item -LiteralPath $stale -Force -ErrorAction SilentlyContinue
 }
 
-$warnings = @()
-$hasTechPmModel = $codexEnv.PSObject.Properties.Name -contains 'techpmModel' -and $codexEnv.techpmModel
-if (-not $Model) {
-    if ($Role -eq 'techpm' -and $hasTechPmModel) { $Model = [string]$codexEnv.techpmModel }
-    else { $Model = $codexEnv.model }
-}
-if (-not $hasTechPmModel) {
-    $warnings += "codex-env.json predates the builder/techpm model split (model=$($codexEnv.model) is used for every role). Re-run codex-preflight.ps1 to pick up the current defaults."
-}
 
+$warnings = @()
+if (-not $Model) { $Model = [string]$codexEnv.model }
+$legacyKeys = @('techpmModel', 'sandbox', 'sandboxWriteOk', 'writableRoots', 'builderFallbackFrom') |
+    Where-Object { $codexEnv.PSObject.Properties.Name -contains $_ }
+# envSchema 2 = written by the v0.7 preflight. The model name is NOT a criterion:
+# a model the user named with -Model is legitimate and must not warn forever.
+$envSchema = 0
+if ($codexEnv.PSObject.Properties.Name -contains 'envSchema') { [void][int]::TryParse([string]$codexEnv.envSchema, [ref]$envSchema) }
+if ($legacyKeys -or $envSchema -lt 2) {
+    $warnings += "codex-env.json was written by a pre-v0.7 preflight (envSchema=$envSchema; legacy keys: $($legacyKeys -join ',')). Re-run codex-preflight.ps1."
+}
 if ($Effort -eq 'ultra' -and $NoUltraModels -contains $Model) {
     $warnings += "$Model has no 'ultra' effort; clamped to 'max'."
     $Effort = 'max'
@@ -306,32 +287,11 @@ if ($Model) { $codexArgs += @('-m', $Model) }
 # Measured: -c plugins."superpowers@...".enabled=false does NOT hide the skills;
 # only turning the plugins feature off does.
 if (-not $KeepPlugins) { $codexArgs += @('--disable', 'plugins') }
-# Windows: the sandbox may be unable to infer its own writable root ("no writable
-# root capability SIDs"), which rejects every shell command while the run still
-# exits 0. preflight records whether naming them explicitly is required here.
-$needRoots = $false
-if ($codexEnv.PSObject.Properties.Name -contains 'writableRootsRequired' -and $codexEnv.writableRootsRequired) { $needRoots = $true }
-if ($WritableRoot.Count -gt 0) { $needRoots = $true }
-if ($Sandbox -eq 'workspace-write' -and $needRoots) {
-    $roots = @($WorkDir)
-    if ($codexEnv.PSObject.Properties.Name -contains 'writableRoots' -and $codexEnv.writableRoots) { $roots += @($codexEnv.writableRoots) }
-    $roots += $WritableRoot
-    $rootsArg = ConvertTo-WritableRootsArg $roots
-    if ($rootsArg) { $codexArgs += @('-c', $rootsArg) }
-}
 foreach ($d in $AddDir) {
     if ($d) {
         if (-not (Test-Path -LiteralPath $d)) { throw "AddDir does not exist: $d" }
         $codexArgs += @('--add-dir', (Resolve-Path -LiteralPath $d).Path)
     }
-}
-if ($OutputSchema) {
-    if (-not (Test-Path -LiteralPath $OutputSchema)) {
-        # A missing schema path is not an error at the CLI boundary -- it hangs.
-        throw "OutputSchema does not exist: $OutputSchema"
-    }
-    # Must be a native absolute path; a POSIX path makes the Windows binary hang.
-    $codexArgs += @('--output-schema', (Resolve-Path -LiteralPath $OutputSchema).Path)
 }
 
 $argLine = ConvertTo-ArgLine $codexArgs
@@ -359,7 +319,7 @@ $workerArgLine = ConvertTo-ArgLine @(
     '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
     '-File', $PSCommandPath, '-Worker', '-JobFile', $jobFile,
     # -File binds every declared Mandatory parameter, so satisfy them.
-    '-EnvFile', $EnvFile, '-Label', $Label, '-PromptFile', $normalizedPrompt, '-WorkDir', $WorkDir
+    '-EnvFile', $EnvFile, '-Label', $Label, '-PromptFile', $normalizedPrompt, '-WorkDir', $WorkDir, '-Role', $Role
 )
 
 # Win32_Process.Create parents the worker to WmiPrvSE instead of this shell, so a
@@ -390,7 +350,7 @@ $meta = [ordered]@{
     model          = $Model
     effort         = $Effort
     sandbox        = $Sandbox
-    outputSchema   = $OutputSchema
+    outputSchema   = ''
     timeoutMinutes = $TimeoutMinutes
     workerPid      = $workerPid
     spawn          = $spawn
@@ -409,9 +369,6 @@ Write-Kv 'ROLE' $Role
 Write-Kv 'MODEL' $Model
 Write-Kv 'EFFORT' $Effort
 Write-Kv 'SANDBOX' $Sandbox
-if ($Sandbox -eq 'danger-full-access') {
-    Write-Kv 'WARN' 'codex is running WITHOUT its sandbox: it can run any command and touch any path. Human-approved; the execution contract is the only thing keeping it in scope.'
-}
 foreach ($w in $warnings) { Write-Kv 'WARN' $w }
 Write-Kv 'TIMEOUT_MIN' $TimeoutMinutes
 Write-Kv 'NEXT' ("powershell -NoProfile -File '{0}\codex-status.ps1' -RunDir '{1}' -Label '{2}' -WaitMinutes 9" -f $PSScriptRoot, $RunDir, $Label)

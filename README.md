@@ -17,12 +17,12 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 │ Superpowers(実行プロセス層)                                                    │
 │  brainstorming / writing-plans / TDD ...                                       │
 └────────────────────────────────────────────────────────────────────────────────┘
-  実行: Opus 5.5メイン  判定・代理: Fableサブ  技術PM・実装: codex exec
+  実行: Opus 5.5メイン  判定・代理: Fableサブ  技術PM・技術レビュー: codex(読み取り専用)  実装: Sonnet 5.5サブ
 ```
 
 ## ループ強度
 
-- **MVP(既定)**: Fableヒアリング → HOW委任(代理ブレスト: Fable=ユーザー目線 / 技術PM=Codex astra・effort maxによるHOW回答+実装アセス) → マイルストーン自律進行(実装はCodex solがアセスに従って実行)(Fableゲート+中間コミット) → Checkpointでのみ評価パッケージ+Human Acceptance。人間の関与は「ヒアリング回答 / Goal Frame確定 / Goal Plan承認(WHATレベル) / ASK_HUMAN応答 / Checkpoint受け入れ」の5点
+- **MVP(既定)**: Fableヒアリング → HOW委任(代理ブレスト: Fable=ユーザー目線 / 技術PM=Codex gpt-6.1-sol・effort maxによるHOW回答+実装アセス) → マイルストーン自律進行(実装はSonnet 5.5サブエージェントがアセスに従って実行)(Fableゲート+中間コミット) → Checkpointでのみ評価パッケージ+Human Acceptance。人間の関与は「ヒアリング回答 / Goal Frame確定 / Goal Plan承認(WHATレベル) / ASK_HUMAN応答 / Checkpoint受け入れ」の5点
 - **高信頼**: 人間参加のブレスト・タスク分解・diff確認・独立レビュー・フルテスト・マイルストーン毎Acceptance
 - Goal Frame作成時にFableが提案し、人間が確定する。FableゲートとHuman Acceptanceは両強度で維持される
 
@@ -32,7 +32,8 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - Codex CLI **0.153.0 以上**(`codex login` 済み)。モデル・サンドボックス・effort はスキル側が明示的に渡すため `~/.codex/config.toml` には依存しない
 - Windows PowerShell 5.1(委譲ヘルパーの実行環境)
 - 対象プロジェクトによっては Codex の `trust_level` 設定(`~/.codex/config.toml` の `[projects]`)が必要になる場合がある
-- ゴール開始時にプリフライト(`bin/codex-preflight.ps1`)が走り、codex実体・バージョン・認証・モデル疎通・**書き込み可否**を確認する。ここで止まった場合は表示された `REASON:` に従う
+- ゴール開始時にプリフライト(`bin/codex-preflight.ps1`)が走り、codex実体・バージョン・認証・モデル疎通を確認する。codex は読み取り専用でしか使わないので、書き込み権限やサンドボックス解除は要らない。ここで止まった場合は表示された `REASON:` に従う
+- Claude Code で Sonnet 5.5(`claude-sonnet-5-5`)が使えること(実装役のプラグイン同梱エージェントが指定する)
 - メインセッションは **Opus 5.5**(`/model opus`。aliasは最新Opus=5.5に解決される)で運用する(Fable消費をヒアリング・代理回答・承認ゲートに限定するため)
 
 ## インストール
@@ -49,7 +50,7 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - **新規ゴール**: 対象プロジェクトで `/r-super-loop-powers` を起動し、やりたいこと(Goal Seed)を伝える
 - **再開**: 同じコマンドで起動すると `docs/r-super-loop-powers/*/state.md` から現在地を復元する
 
-フェーズの流れ(MVP): ヒアリング(Fable往復・無自覚の既知の表面化) → Goal Frame(強度確定) → ブレスト/Spec/Plan(Fable代理回答+技術PM回答・Checkpoint配置) → Goal Gate(Fable) → 人間承認(WHATレベル) → マイルストーン自律実装(codex exec → Fableゲート → 判断記録+グラレコ+中間コミット) → Checkpoint: 評価パッケージ → 人間受け入れ → 確定 → 振り返り
+フェーズの流れ(MVP): ヒアリング(Fable往復・無自覚の既知の表面化) → Goal Frame(強度確定) → ブレスト/Spec/Plan(Fable代理回答+技術PM回答・Checkpoint配置) → Goal Gate(Fable) → 人間承認(WHATレベル) → マイルストーン自律実装(Sonnet実装役 → impl-check → Fableゲート → 判断記録+グラレコ+中間コミット) → Checkpoint: 評価パッケージ → 人間受け入れ → 確定 → 振り返り
 
 ### 役とモデル(Claude版)
 
@@ -58,9 +59,10 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 | メイン | Opus 5.5(`/model opus`) | 進行管理・成果物作成・代理ブレストでの問いの振り分け |
 | 代理Fable | Fable(`Agent model: fable`) | ヒアリング駆動・Goal Frame・代理ブレストの**ユーザー目線**の回答と設計承認 |
 | ゲート・判断Fable | Fable(`Agent model: fable`、呼び出し毎に新規) | 承認ゲート・マイルストーン開始確認・エスカレーション判定・REJECT後の戻り先決定 |
-| 技術PM | codex `gpt-6-astra` / max / read-only | 代理ブレストで**HOWに係る問い**に実装責任者として回答し、A-4末にマイルストーン別の実装アセスを出す |
-| 実装 | codex `gpt-6-sol` / B-1でFableが選択(low〜max。スクリプト既定 low) | 技術PMのアセスに従う実行者として実装と自己検証(プラグイン無効・ブレスト/計画はしない) |
-| 独立レビュー(高信頼のみ) | Opus 5.5(`Agent model: opus`) | B-5の独立レビュー |
+| 技術PM | codex `gpt-6.1-sol` / max / read-only | 代理ブレストで**HOWに係る問い**に実装責任者として回答し、A-4末にマイルストーン別の実装アセスを出す |
+| 実装 | Sonnet 5.5(`r-super-loop-powers:builder`) | 技術PMのアセスに従う実行者として実装と自己検証(Skill/Agentツールなし・ブレスト/計画はしない)。成否は `impl-check.ps1` が判定 |
+| 技術レビュー(高信頼のみ) | codex `gpt-6.1-sol` / max / read-only | B-5の技術レビュー。要件適合はB-6のゲートFableが判定 |
+| グラレコ | codex `gpt-6.1-sol` / medium / read-only | 画像生成のみ。Opus が generated_images から回収 |
 
 ## E2Eテスト(導入・改訂時に1周まわす)
 
@@ -71,12 +73,14 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - [ ] ヒアリングの質問にHOW質問(UI形式・実装方式の選択)が含まれない
 - [ ] goal-frame.md に「ヒアリングで表面化した既知」があり、ループ強度が提案→人間確定される
 - [ ] MVPのブレスト(A-2〜A-4)でユーザー目線の質問・設計承認が代理Fableに、HOWの質問が技術PMに向かい、人間にはASK_HUMAN該当のみ届く
-- [ ] 技術PMが `codex-run.ps1 -Sandbox read-only -Effort max` で起動され、`STATUS: OK` の回答だけが採用される(コードを変更していない)
+- [ ] 技術PMが `codex-run.ps1 -Role techpm`(read-only・max)で起動され、`STATUS: OK` の回答だけが採用される(コードを変更していない)
 - [ ] goal-plan.md の主要設計判断に、Fable代理回答 / 技術PM回答のどちらを根拠にしたかが記録されている
 - [ ] goal-plan.md にCheckpoint印と主要設計判断欄があり、最終マイルストーンがCheckpointである
 - [ ] Goal Gate が代理Fableとは別の新規Fableインスタンスで行われ、PASSするまで人間承認を求められない
 - [ ] A-8で人間に提示されるのがWHATレベル(ゴール・要件・制約・Checkpoint配置・主要仮定)である
-- [ ] codex exec がコミットを作らない
+- [ ] 実装役・codex がコミットを作らない(impl-check が HEAD の移動を検出する)
+- [ ] B-2 の実装が `r-super-loop-powers:builder`(Sonnet 5.5)で起動され、`impl-check.ps1` の `STATUS: OK` だけが合格になる
+- [ ] 高信頼のB-5で codex `-Role reviewer` が技術レビューを返し(`TECH_REVIEW:` 行)、要件適合はB-6のゲートFableが判定する
 - [ ] 非Checkpointマイルストーンで B-6 PASS後、人間承認なしで次マイルストーンへ進む(decisions.md・グラレコ・中間コミットが残る)
 - [ ] Checkpoint到達時のみ評価パッケージ(human-report.md)とHuman Acceptanceが行われる
 - [ ] 評価パッケージに各マイルストーンの decisions.md 集約(Agent仮説HOW / 低確信 / 実装対象外 / 新発見の未知)がある
@@ -84,15 +88,17 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - [ ] Checkpoint の ACCEPT 記録前に確定処理が行われない(中間コミットは可)
 - [ ] 人間フィードバックで発見された未知が assumptions.md に追記される
 - [ ] retro.md がCheckpoint単位で作成され、ループ回数・所要時間・発見された未知が記録される
-- [ ] call-log.md に fable往復 / opus-sub / codex-techpm / codex の呼び出しが記録されている
-- [ ] grareco.png が組み込み image_gen ツールで生成される(スクリプト・APIキー使用なし)
+- [ ] call-log.md に fable往復 / codex-techpm / codex-review / codex-grareco / sonnet-builder の呼び出しが記録されている
+- [ ] grareco.png が codex の組み込み image_gen で(read-only のまま)生成され、Opus が generated_images から回収している
 - [ ] セッションを切って再起動 → state.md から現在地が復元される
 - [ ] 高信頼強度ではv0.2のフロー(人間参加ブレスト・マイルストーン毎Acceptance)が維持される
 
 ## リポジトリ構成
 
 - `.claude-plugin/` — Claude版プラグインマニフェスト・マーケットプレイス定義
-- `skills/r-super-loop-powers/` — Claude版 SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本) / `bin/`(codex委譲ヘルパー) / `schemas/`(実装報告スキーマ) / `references/`(codex呼び出し規約)
+- `skills/r-super-loop-powers/` — Claude版 SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check) / `schemas/`(実装報告スキーマ) / `references/`(codex呼び出し規約)
+- `agents/` — Claude版の実装役エージェント定義(`builder.md`、Sonnet 5.5)
+- `tests/` — `bin/` スクリプトのテスト(`powershell -File tests\<名>.tests.ps1`)
 - `.codex-plugin/` — Codex版プラグインマニフェスト(`plugin.json`)
 - `.agents/plugins/` — Codex版マーケットプレイス定義(`marketplace.json`)
 - `skills-codex/r-super-loop-powers/` — Codex版 SKILL.md / policy.md / schemas/(ゲート判定・エスカレーション判定の構造化出力スキーマ) / templates/(9種、`skills/` からの複写)
