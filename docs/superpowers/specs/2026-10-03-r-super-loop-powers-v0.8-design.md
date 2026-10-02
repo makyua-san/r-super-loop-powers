@@ -38,7 +38,7 @@
 | D50 | Fable への配布 | SKILL.md「Fableサブエージェント共通契約」に、起動時の依頼文の冒頭へ roles.md の「全体図」+該当節(代理Fable または ゲートFable)を**原文のまま**貼ることを必須として書く。代理Fableは初回起動時のみ(SendMessage 往復では再送しない) |
 | D51 | Opus への配布 | SKILL.md 冒頭と起動時チェック1で、policy.md と一緒に roles.md を読ませる。policy.md「責任分担」表は残し、詳細は roles.md を参照と書く |
 | D52 | 人間向け応答チェック = Stop コマンドフック | プラグインに `hooks/hooks.json` を新設し、Stop に `hooks/human-message-check.ps1` を登録する(timeout 90 秒)。処理は §4 |
-| D53 | AskUserQuestion のチェック | スモーク(a)(b)の結果次第。Stop が発火せず、かつ PreToolUse の deny で書き直しが起きる場合だけ、同じスクリプトを `-Event PreToolUse` で PreToolUse(matcher `AskUserQuestion`)に登録する。成り立たなければ入れず、その旨を README に書く |
+| D53 | AskUserQuestion のチェック | 対話セッションのスモーク(a)で、AskUserQuestion で Stop が発火するかだけを確かめ、結果を README に書く。PreToolUse での検査は v0.8 では入れない(発火しない場合の追加は、必要になったときに別途確認して行う) |
 | D54 | フェイルオープン | 判定側の失敗(claude が見つからない・タイムアウト・出力解析不能・予期しない例外)では**ブロックしない**。理由を `hook-log.md` に記録する |
 | D55 | 観測 | 判定結果(PASS / BLOCK / SKIP / ERROR と理由)を `<goal-dir>/hook-log.md` に1行ずつ追記する。retro の観測欄でブロック回数を見られるようにする |
 
