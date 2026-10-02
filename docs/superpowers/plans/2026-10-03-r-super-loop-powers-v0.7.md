@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Claude版の実装役を Sonnet 6 サブエージェントに移し、codex を `gpt-6.1-sol` の読み取り専用ロール(技術PM・技術レビュー・グラレコ)だけにする。
+**Goal:** Claude版の実装役を Sonnet 5.5 サブエージェントに移し、codex を `gpt-6.1-sol` の読み取り専用ロール(技術PM・技術レビュー・グラレコ)だけにする。
 
-**Architecture:** 実装役はプラグイン同梱のエージェント定義 `agents/builder.md`(`model: claude-sonnet-6`、Skill/Agentツールなし)として Agentツールから起動する。成否は新しい `bin/impl-check.ps1` が報告JSONと git の実状態を突き合わせて判定する。codex 側は `codex-run.ps1` を read-only 3ロールに絞り、`codex-preflight.ps1` から書き込み系の仕組みをすべて削除する。
+**Architecture:** 実装役はプラグイン同梱のエージェント定義 `agents/builder.md`(`model: claude-sonnet-5-5`、Skill/Agentツールなし)として Agentツールから起動する。成否は新しい `bin/impl-check.ps1` が報告JSONと git の実状態を突き合わせて判定する。codex 側は `codex-run.ps1` を read-only 3ロールに絞り、`codex-preflight.ps1` から書き込み系の仕組みをすべて削除する。
 
 **Tech Stack:** Windows PowerShell 5.1(.ps1 は ASCII のみ)、git、codex-cli ≥ 0.153.0、Claude Code 2.1.x プラグイン(agents/)
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- codex のモデルID: `gpt-6.1-sol`。実装役のモデルID: `claude-sonnet-6`
+- codex のモデルID: `gpt-6.1-sol`。実装役のモデルID: `claude-sonnet-5-5`
 - codex の全ロールは `-s read-only`。`workspace-write` / `danger-full-access` を使う経路を残さない
 - `.ps1` は ASCII のみ(PS 5.1 が BOM なしを ANSI で読むため)。日本語は SKILL.md / references に書く
 - JSON の解析に `python3` を使わない(`ConvertFrom-Json` を使う)
@@ -40,11 +40,11 @@
 **Interfaces:**
 - Produces: 3項目の結果。(a) が NG なら以降のタスクを止めてユーザーに正しいモデルIDを確認する
 
-- [ ] **Step 1: (a) Sonnet 6 のモデルIDを確認する**
+- [ ] **Step 1: (a) Sonnet 5.5 のモデルIDを確認する**
 
 Run(PowerShell):
 ```powershell
-claude -p --model claude-sonnet-6 "Reply with exactly: SONNET_OK"
+claude -p --model claude-sonnet-5-5 "Reply with exactly: SONNET_OK"
 ```
 Expected: `SONNET_OK`。モデル不明エラーなら **停止してユーザーに正しいIDを確認する**(エイリアス `sonnet` に落とさない)。
 
@@ -78,7 +78,7 @@ Expected: `STATUS: OK` かつ png が1枚以上。無ければ `~/.codex/generat
 `docs/superpowers/notes/2026-10-03-v0.7-smoke.md` に、(a)(b)(c) それぞれの実行コマンド・出力の要点・判定(OK/NG)・設計への影響を表で書く。
 ```bash
 git add docs/superpowers/notes/2026-10-03-v0.7-smoke.md
-git commit -m "docs: v0.7スモーク(sonnet-6 / gpt-6.1-sol max / read-only画像生成)"
+git commit -m "docs: v0.7スモーク(sonnet-5-5 / gpt-6.1-sol max / read-only画像生成)"
 ```
 
 ---
@@ -357,7 +357,7 @@ git commit -m "feat: 実装委譲の成否を報告とgitの突き合わせで�
 ---
 name: builder
 description: r-super-loop-powers の B-2 実装役。承認済みの技術アセスに従って1マイルストーン(またはタスク)を実装・検証し、impl-report 形式の自己検証報告を返す。ゴールループのオーケストレーター以外からは使わない。
-model: claude-sonnet-6
+model: claude-sonnet-5-5
 tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 ---
 
@@ -398,13 +398,13 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 
 - [ ] **Step 2: frontmatter を検証する**
 
-Run: `head -6 agents/builder.md` → `name: builder` / `model: claude-sonnet-6` / `tools:` に `Skill` と `Agent` が含まれないこと(`grep -nE '^tools:.*\b(Skill|Agent)\b' agents/builder.md` が出力なし)
+Run: `head -6 agents/builder.md` → `name: builder` / `model: claude-sonnet-5-5` / `tools:` に `Skill` と `Agent` が含まれないこと(`grep -nE '^tools:.*\b(Skill|Agent)\b' agents/builder.md` が出力なし)
 
 - [ ] **Step 3: コミット**
 
 ```bash
 git add agents/builder.md
-git commit -m "feat: 実装役をSonnet 6のプラグイン同梱エージェントとして定義する"
+git commit -m "feat: 実装役をSonnet 5.5のプラグイン同梱エージェントとして定義する"
 ```
 
 (実際に `r-super-loop-powers:builder` として起動できるかは、プラグイン更新+再起動後に Task 8 Step 5 で確認する)
@@ -786,7 +786,7 @@ git commit -m "refactor: preflightから書き込みプローブ・サンドボ�
 
 - [ ] **Step 1: description(3行目)を置き換える**
 
-`モデル責任分担(Opus 5.5実行 / Fable判定 / Codex技術PM・実装)` → `モデル責任分担(Opus 5.5実行 / Fable判定 / Codex gpt-6.1-sol技術PM・技術レビュー(読み取り専用) / Sonnet 6実装)`
+`モデル責任分担(Opus 5.5実行 / Fable判定 / Codex技術PM・実装)` → `モデル責任分担(Opus 5.5実行 / Fable判定 / Codex gpt-6.1-sol技術PM・技術レビュー(読み取り専用) / Sonnet 5.5実装)`
 
 - [ ] **Step 2: 起動時チェック6を置き換え、7を追加する**
 
@@ -799,7 +799,7 @@ git commit -m "refactor: preflightから書き込みプローブ・サンドボ�
 ```
 `ゴール開始前にこのチェックを通さずにワークフローBへ進まない。` の前に追加:
 ```markdown
-7. **実装役エージェントの確認**: Agentツールで使えるエージェント種別に `r-super-loop-powers:builder`(Sonnet 6)があることを確認する。無い場合(プラグインが v0.7 未満、または更新後に再起動していない)はユーザーに報告して停止する。**汎用エージェントや `model: sonnet` 指定で実装を代行させない**(実行契約・ツール制限・モデルが保証されないため)。
+7. **実装役エージェントの確認**: Agentツールで使えるエージェント種別に `r-super-loop-powers:builder`(Sonnet 5.5)があることを確認する。無い場合(プラグインが v0.7 未満、または更新後に再起動していない)はユーザーに報告して停止する。**汎用エージェントや `model: sonnet` 指定で実装を代行させない**(実行契約・ツール制限・モデルが保証されないため)。
 ```
 5 の Glob 対象(`codex-preflight.ps1`)はそのまま。
 
@@ -831,12 +831,12 @@ fable / codex-techpm(技術PM) / codex-review(技術レビュー) / codex-grarec
 
 - [ ] **Step 5: 技術PM共通契約のモデル表記を直す**
 
-`モデルは \`gpt-6-astra\`(codex-env.json の \`techpmModel\`)、effort は \`max\` 固定。実装役(\`gpt-6-sol\`)はこのアセスに従って実行するだけなので` → `モデルは \`gpt-6.1-sol\`(codex-env.json の \`model\`)、effort は \`max\`(\`-Role techpm\` の既定)。実装役(Sonnet 6)はこのアセスに従って実行するだけなので`。
+`モデルは \`gpt-6-astra\`(codex-env.json の \`techpmModel\`)、effort は \`max\` 固定。実装役(\`gpt-6-sol\`)はこのアセスに従って実行するだけなので` → `モデルは \`gpt-6.1-sol\`(codex-env.json の \`model\`)、effort は \`max\`(\`-Role techpm\` の既定)。実装役(Sonnet 5.5)はこのアセスに従って実行するだけなので`。
 起動例の `-Role techpm -Effort max -TimeoutMinutes 30` はそのまま。`\`-OutputSchema\` は**付けない**(回答は散文であり実装報告ではない)。` の一文を削除する(パラメータが無くなったため)。
 
 - [ ] **Step 6: B-1 から effort 選択を削除する**
 
-B-1 の指示文を `「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ。実装方式は技術PMのアセスで決まっており、実装役(Sonnet 6)はそれを実行するだけである点を考慮せよ」と指示する。` で終わらせ、続く `(実装役 \`gpt-6-sol\` は ...丸める)。` と次段落 `返答の \`effort:\` 行を読み取り、...call-log に記録する。` を削除する。
+B-1 の指示文を `「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ。実装方式は技術PMのアセスで決まっており、実装役(Sonnet 5.5)はそれを実行するだけである点を考慮せよ」と指示する。` で終わらせ、続く `(実装役 \`gpt-6-sol\` は ...丸める)。` と次段落 `返答の \`effort:\` 行を読み取り、...call-log に記録する。` を削除する。
 
 - [ ] **Step 7: B-2〜B-3 を置き換える**
 
@@ -847,7 +847,7 @@ B-1 の指示文を `「このマイルストーンが上位ゴールのどの�
 - **MVP**: **マイルストーン単位でまとめて**1〜数回、実装役に委譲する。タスク細分化しない。
 - **高信頼**: subagent-driven developmentと同じプロセス構造でタスク分解し、個別に委譲する。
 
-実装役は Agentツールの `subagent_type: "r-super-loop-powers:builder"`(`claude-sonnet-6`。Skill / Agent ツールを持たないので、プロセス系スキルを起動できない)で起動する。実行契約(スコープ・コミット禁止・要件再定義禁止・否定リスト)・ロール指示・出力契約はエージェント定義に入っているので、プロンプトに書かなくてよい。
+実装役は Agentツールの `subagent_type: "r-super-loop-powers:builder"`(`claude-sonnet-5-5`。Skill / Agent ツールを持たないので、プロセス系スキルを起動できない)で起動する。実行契約(スコープ・コミット禁止・要件再定義禁止・否定リスト)・ロール指示・出力契約はエージェント定義に入っているので、プロンプトに書かなくてよい。
 
 **(1) 委譲前の基準を記録する**
 対象プロジェクトで `git status --porcelain` を確認し、`docs/r-super-loop-powers/` 以外に未コミットの変更があれば、先に中間コミットするか(MVPでB-6 PASS済みの分)ユーザーに確認する(実装役の変更と混ざると判定できないため)。`git rev-parse HEAD` の値を `<goal-dir>/impl-runs/<ラベル>.base.txt` に保存する。ラベルは `m<n>-impl`(再委譲は `m<n>-impl-2` …)。
@@ -941,7 +941,7 @@ git commit -m "feat: SKILL.mdを実装役Sonnet・codex読み取り専用の分�
 
 ```markdown
 | ブレスト〜Plan(A-2〜A-4) | superpowers:brainstormingを**Fable代理回答(ユーザー目線)+技術PM回答(HOW・Codex gpt-6.1-sol / max)+A-4末の実装アセス**で実施(人間はASK_HUMAN時のみ。最終の設計承認は代理Fable) | 人間参加のsuperpowers:brainstorming(技術PMは人間が求めた場合のみ) |
-| 実装委譲(B-2) | マイルストーン単位でまとめて実装役(Sonnet 6)に委譲可(タスク細分化しない) | タスク分解して個別に委譲 |
+| 実装委譲(B-2) | マイルストーン単位でまとめて実装役(Sonnet 5.5)に委譲可(タスク細分化しない) | タスク分解して個別に委譲 |
 | タスク単位の受け入れ(B-3) | `impl-check.ps1` の STATUS と自己検証報告の確認のみ(diff精読なし) | `impl-check.ps1` の STATUS + B-5 の技術レビュー |
 | 独立レビュー(B-5) | 省略(Opusメインがsubmission作成時にセルフチェック+decisions.md確定) | codex gpt-6.1-sol による**技術レビュー**(PL-003)+decisions.md確定。要件適合はB-6のFable |
 ```
@@ -951,7 +951,7 @@ git commit -m "feat: SKILL.mdを実装役Sonnet・codex読み取り専用の分�
 Opus 行の主責務から `。高信頼強度では独立レビュー(サブ)` を削除する。技術PM 行から Sonnet 行までを次にする:
 ```markdown
 | 技術PM | Codex `gpt-6.1-sol` / `max` / read-only(`-Role techpm`) | 実装責任者として、HOWに係るQAへ回答する(実装方式・技術選択・構成と分割・技術リスク・実現性・検証可能性)。MVPでは A-4末にマイルストーン別の**実装アセス**(`tech-assessment.md`)を出し、実装方式を1つに決め切る | MVPの代理ブレスト(A-2〜A-4)で、OpusがHOWの問いを束ねて呼び出す(1ラウンド=1回)+実装アセス1回。高信頼では人間が求めた場合のみ | コード変更・コミット。ユーザー価値・好み・優先順位の決定(`NEEDS_USER_VIEW:` で代理Fableへ返す)。設計承認 |
-| 実装役 | Sonnet 6(プラグイン同梱エージェント `r-super-loop-powers:builder`、`claude-sonnet-6`) | **実行者**。技術PMのアセス(高信頼では人間承認済みのplan)に従って、安全>安定>速度の順で実装し、検証し、自己検証報告(impl-report JSON)を返す | マイルストーン単位(MVP)またはタスク単位(高信頼)で呼び出し。Skill / Agent ツールを持たない | コミット、要件の再定義、否定リスト該当の自律判断。**設計・計画・選択肢提示のやり直し** |
+| 実装役 | Sonnet 5.5(プラグイン同梱エージェント `r-super-loop-powers:builder`、`claude-sonnet-5-5`) | **実行者**。技術PMのアセス(高信頼では人間承認済みのplan)に従って、安全>安定>速度の順で実装し、検証し、自己検証報告(impl-report JSON)を返す | マイルストーン単位(MVP)またはタスク単位(高信頼)で呼び出し。Skill / Agent ツールを持たない | コミット、要件の再定義、否定リスト該当の自律判断。**設計・計画・選択肢提示のやり直し** |
 | 技術レビュー | Codex `gpt-6.1-sol` / `max` / read-only(`-Role reviewer`) | 実装に関与していない立場で、正しさ・アセスとの整合・技術リスク・検証の妥当性をレビューする(`TECH_REVIEW: OK / CONCERNS`) | **高信頼のB-5のみ** | 要件適合の判定(B-6のFableの仕事)、コード変更 |
 | 画像生成(Codex組み込み image_gen ツール) | Codex `gpt-6.1-sol` / `medium` / read-only(`-Role grareco`) | グラフィックレコード(生成のみ。保存はOpusが回収) | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)に呼び出し | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
 ```
@@ -968,7 +968,7 @@ Opus 行の主責務から `。高信頼強度では独立レビュー(サブ)` 
 - [ ] **Step 4: PL-001・PL-003・PL-007・PL-011 と観測を置き換える**
 
 ```markdown
-| PL-001 | Default roles | Fable=責任/判定/ユーザー目線の代理回答、Opus 5.5=整理/仕様/報告、Codex gpt-6.1-sol=技術PM(HOW回答・実装アセス)/技術レビュー(高信頼)/グラレコ(いずれも読み取り専用)、Sonnet 6=実装(アセスに従う実行者)をデフォルトとする |
+| PL-001 | Default roles | Fable=責任/判定/ユーザー目線の代理回答、Opus 5.5=整理/仕様/報告、Codex gpt-6.1-sol=技術PM(HOW回答・実装アセス)/技術レビュー(高信頼)/グラレコ(いずれも読み取り専用)、Sonnet 5.5=実装(アセスに従う実行者)をデフォルトとする |
 | PL-003 | Independent review | **高信頼強度では**、Fable提出前に実装非関与の codex `gpt-6.1-sol`(`-Role reviewer`)が技術観点で独立レビューする。要件適合はB-6のFableゲートが判定する。MVP強度ではOpusメインのセルフチェックで代替する |
 | PL-007 | Budget observability | fable / codex-techpm / codex-review / codex-grareco / sonnet-builder の呼び出し(代理FableとのSendMessage往復を含む)を call-log.md に記録し、Opus:Fable ≈ 5:1 を目安に振り返る。MVPのヒアリング・代理ブレスト期(A-1a〜A-4)はfable往復が構造的に増えるため、目安は**ワークフローB以降**に適用する |
 | PL-011 | Delegation is verified, not assumed | 委譲の成否は機械判定でのみ決める: codex は `bin/codex-status.ps1`、実装役は `bin/impl-check.ps1` の `STATUS: OK`。プロセスの消滅・自己検証報告の存在・報告本文の印象を成功の根拠にしない。`OK` 以外は不合格として扱い、実装済みとして下流工程(submission / ゲート / コミット)へ進めない。codex の呼び出し規約は `references/codex-invocation.md`、実装役は SKILL.md B-2 |
@@ -1013,31 +1013,31 @@ git commit -m "docs: policyとcodex呼び出し規約をv0.7の役割分担に�
 
 - [ ] **Step 1: README の Claude版部分を直す**
 
-- 図の最終行: `  実行: Opus 5.5メイン  判定・代理: Fableサブ  技術PM・技術レビュー: codex(読み取り専用)  実装: Sonnet 6サブ`
-- ループ強度 MVP: `技術PM=Codex astra・effort max` → `技術PM=Codex gpt-6.1-sol・effort max`、`(実装はCodex solがアセスに従って実行)` → `(実装はSonnet 6サブエージェントがアセスに従って実行)`
-- 前提の Codex CLI 行: `モデル・サンドボックス・effort はスキル側が明示的に渡すため` は残し、プリフライト行を `ゴール開始時にプリフライト(\`bin/codex-preflight.ps1\`)が走り、codex実体・バージョン・認証・モデル疎通を確認する。codex は読み取り専用でしか使わないので、書き込み権限やサンドボックス解除は要らない。ここで止まった場合は表示された \`REASON:\` に従う` にする。前提に `- Claude Code で Sonnet 6(\`claude-sonnet-6\`)が使えること(実装役のプラグイン同梱エージェントが指定する)` を追加する。
+- 図の最終行: `  実行: Opus 5.5メイン  判定・代理: Fableサブ  技術PM・技術レビュー: codex(読み取り専用)  実装: Sonnet 5.5サブ`
+- ループ強度 MVP: `技術PM=Codex astra・effort max` → `技術PM=Codex gpt-6.1-sol・effort max`、`(実装はCodex solがアセスに従って実行)` → `(実装はSonnet 5.5サブエージェントがアセスに従って実行)`
+- 前提の Codex CLI 行: `モデル・サンドボックス・effort はスキル側が明示的に渡すため` は残し、プリフライト行を `ゴール開始時にプリフライト(\`bin/codex-preflight.ps1\`)が走り、codex実体・バージョン・認証・モデル疎通を確認する。codex は読み取り専用でしか使わないので、書き込み権限やサンドボックス解除は要らない。ここで止まった場合は表示された \`REASON:\` に従う` にする。前提に `- Claude Code で Sonnet 5.5(\`claude-sonnet-5-5\`)が使えること(実装役のプラグイン同梱エージェントが指定する)` を追加する。
 - 使い方のフェーズの流れ: `マイルストーン自律実装(codex exec → Fableゲート → ...)` → `マイルストーン自律実装(Sonnet実装役 → impl-check → Fableゲート → ...)`
 - 役とモデル表の技術PM・実装・独立レビュー行を次にする:
 ```markdown
 | 技術PM | codex `gpt-6.1-sol` / max / read-only | 代理ブレストで**HOWに係る問い**に実装責任者として回答し、A-4末にマイルストーン別の実装アセスを出す |
-| 実装 | Sonnet 6(`r-super-loop-powers:builder`) | 技術PMのアセスに従う実行者として実装と自己検証(Skill/Agentツールなし・ブレスト/計画はしない)。成否は `impl-check.ps1` が判定 |
+| 実装 | Sonnet 5.5(`r-super-loop-powers:builder`) | 技術PMのアセスに従う実行者として実装と自己検証(Skill/Agentツールなし・ブレスト/計画はしない)。成否は `impl-check.ps1` が判定 |
 | 技術レビュー(高信頼のみ) | codex `gpt-6.1-sol` / max / read-only | B-5の技術レビュー。要件適合はB-6のゲートFableが判定 |
 | グラレコ | codex `gpt-6.1-sol` / medium / read-only | 画像生成のみ。Opus が generated_images から回収 |
 ```
 - E2E チェックリスト: 技術PMの項目を `- [ ] 技術PMが \`codex-run.ps1 -Role techpm\`(read-only・max)で起動され、\`STATUS: OK\` の回答だけが採用される(コードを変更していない)`、`codex exec がコミットを作らない` を `- [ ] 実装役・codex がコミットを作らない(impl-check が HEAD の移動を検出する)`、call-log の項目を `- [ ] call-log.md に fable往復 / codex-techpm / codex-review / codex-grareco / sonnet-builder の呼び出しが記録されている`、grareco の項目を `- [ ] grareco.png が codex の組み込み image_gen で(read-only のまま)生成され、Opus が generated_images から回収している` にし、次の2項目を追加する:
 ```markdown
-- [ ] B-2 の実装が `r-super-loop-powers:builder`(Sonnet 6)で起動され、`impl-check.ps1` の `STATUS: OK` だけが合格になる
+- [ ] B-2 の実装が `r-super-loop-powers:builder`(Sonnet 5.5)で起動され、`impl-check.ps1` の `STATUS: OK` だけが合格になる
 - [ ] 高信頼のB-5で codex `-Role reviewer` が技術レビューを返し(`TECH_REVIEW:` 行)、要件適合はB-6のゲートFableが判定する
 ```
 - リポジトリ構成: `skills/r-super-loop-powers/` 行の `bin/`(codex委譲ヘルパー) を `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check) にし、次の2行を追加する:
 ```markdown
-- `agents/` — Claude版の実装役エージェント定義(`builder.md`、Sonnet 6)
+- `agents/` — Claude版の実装役エージェント定義(`builder.md`、Sonnet 5.5)
 - `tests/` — `bin/` スクリプトのテスト(`powershell -File tests\<名>.tests.ps1`)
 ```
 
 - [ ] **Step 2: plugin.json を直す**
 
-`"version": "0.7.0"`、description を `"Superpowersの上位に薄く重なるゴールループ・オーケストレーション層。フェーズ管理、Fable承認ゲート、ヒューマン・イン・ザ・ループ配置、モデル責任分担(Opus 5.5実行/Fable判定・ユーザー目線の代理回答/Codex gpt-6.1-sol技術PM・技術レビュー(読み取り専用)/Sonnet 6実装)を制御する。"` にする。
+`"version": "0.7.0"`、description を `"Superpowersの上位に薄く重なるゴールループ・オーケストレーション層。フェーズ管理、Fable承認ゲート、ヒューマン・イン・ザ・ループ配置、モデル責任分担(Opus 5.5実行/Fable判定・ユーザー目線の代理回答/Codex gpt-6.1-sol技術PM・技術レビュー(読み取り専用)/Sonnet 5.5実装)を制御する。"` にする。
 
 - [ ] **Step 3: 受け入れ基準 3〜6 を確認する**
 
@@ -1054,7 +1054,7 @@ Expected: 1つ目は出力なし(README の Codex版節の行が残る場合は�
 
 ```bash
 git add README.md .claude-plugin/plugin.json
-git commit -m "feat: 実装役をSonnet 6にし、codexを読み取り専用にする(v0.7.0)"
+git commit -m "feat: 実装役をSonnet 5.5にし、codexを読み取り専用にする(v0.7.0)"
 ```
 
 - [ ] **Step 5: プラグインを更新して builder の起動を確認する**

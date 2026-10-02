@@ -5,7 +5,7 @@
 - 前提: v0.6.0(commit 28cecce)
 - ユーザー決定(2026-10-03):
   1. 技術PM = codex `gpt-6.1-sol` / effort `max`
-  2. 実装役 = Sonnet 6(Claude サブエージェント)。これにより codex は編集権限を必要としない
+  2. 実装役 = Sonnet 5.5(Claude サブエージェント)。これにより codex は編集権限を必要としない
   3. 技術レビュー = `gpt-6.1-sol`、要件適合の確認 = Fable
   4. 技術レビューは**高信頼強度のみ**。MVPは従来どおり Opus のセルフチェック。要件適合の確認は B-6 の Fable ゲートが担う(Fable呼び出しは増やさない)
   5. グラレコは codex を read-only で動かし、生成画像を Opus が回収する
@@ -14,27 +14,27 @@
 
 v0.6 では実装役が codex(`gpt-6-sol`)だったため、codex に書き込み権限が必要だった。その結果、Windows の `workspace-write` サンドボックス不具合への対処(書き込みプローブ・`writable_roots`・ユーザー承認つきのサンドボックス解除 `-AllowUnsandboxed`)と、未展開モデルの暫定フォールバックがスクリプトに積み上がっていた。
 
-v0.7 では実装を Claude 側(Sonnet 6 サブエージェント)へ移し、**codex を助言・レビュー・画像生成だけの読み取り専用ロールにする**。これにより上記の書き込み系の仕組みをすべて削除する。ゴールループの工程(A-0〜A-8 / B-1〜B-10)・成果物契約・ゲート規律は変えない。
+v0.7 では実装を Claude 側(Sonnet 5.5 サブエージェント)へ移し、**codex を助言・レビュー・画像生成だけの読み取り専用ロールにする**。これにより上記の書き込み系の仕組みをすべて削除する。ゴールループの工程(A-0〜A-8 / B-1〜B-10)・成果物契約・ゲート規律は変えない。
 
 ## 1. 事実確認(2026-10-03)
 
 | # | 事実 | 根拠 | 設計への影響 |
 |---|---|---|---|
-| F1 | サブエージェント定義(`.claude/agents/*.md` / プラグインの `agents/`)の `model:` は、エイリアスに加えて**フルのモデルID**を受け付ける | code.claude.com/docs/en/sub-agents.md | `model: claude-sonnet-6` と明記できる |
+| F1 | サブエージェント定義(`.claude/agents/*.md` / プラグインの `agents/`)の `model:` は、エイリアスに加えて**フルのモデルID**を受け付ける | code.claude.com/docs/en/sub-agents.md | `model: claude-sonnet-5-5` と明記できる |
 | F2 | Agentツールの `model` パラメータで指定できるのはエイリアス(`sonnet` 等)。`sonnet` がどの版に解決されるかは文書化されていない | Agentツールのスキーマ / 同上 | 実装役はエイリアスではなく**プラグイン同梱のエージェント定義**で起動する |
 | F3 | プラグインは `agents/` を同梱でき、`<plugin名>:<agent名>` として呼べる | code.claude.com/docs/en/plugins/create.md | `subagent_type: "r-super-loop-powers:builder"` |
 | F4 | サブエージェント定義に reasoning effort の欄は無い(frontmatter は name / description / tools / disallowedTools / model / permissionMode / skills / maxTurns / hooks 等) | sub-agents.md | B-1 の effort 選択は意味を失う |
-| F5 | ユーザーの `~/.codex/config.toml` のモデル表記は `gpt-6.1-sol` | 実ファイル | codex側のモデルIDは `gpt-6.1-sol` とする(ユーザー表記「gpt-6-sol-6.1」と同一のものと解釈) |
+| F5 | ユーザーの `~/.codex/config.toml` のモデル表記は `gpt-6.1-sol` | 実ファイル | codex側のモデルIDは `gpt-6.1-sol` とする(ユーザー表記「gpt-6-sol-6.1」と同一のものと解釈。実装役はユーザー訂正(2026-10-03)により Sonnet 5.5) |
 | F6 | codex の image_gen は画像を `~/.codex/generated_images/<thread_id>/ig_*.png` に保存する | 実ディレクトリ | read-only でも画像は生成でき、`THREAD_ID` から回収先が決まる(実装時スモークで確定) |
 
-**未確定(実装計画の最初のスモークテストで確定する)**: (a) `claude-sonnet-6` というIDで実際にサブエージェントが起動するか (b) `gpt-6.1-sol` が `max` effort で疎通するか (c) read-only サンドボックスの codex が image_gen を使え、F6 の場所に画像が残るか。(a) が通らない場合はユーザーに正しいIDを確認する(黙ってエイリアスに落とさない)。
+**未確定(実装計画の最初のスモークテストで確定する)**: (a) `claude-sonnet-5-5` というIDで実際にサブエージェントが起動するか (b) `gpt-6.1-sol` が `max` effort で疎通するか (c) read-only サンドボックスの codex が image_gen を使え、F6 の場所に画像が残るか。(a) が通らない場合はユーザーに正しいIDを確認する(黙ってエイリアスに落とさない)。
 
 ## 2. 設計決定(D34〜D45)
 
 | ID | 決定 | 内容 |
 |---|---|---|
-| D34 | 役割の再配置 | 技術PM・技術レビュー・グラレコ = codex `gpt-6.1-sol`(read-only)。実装役 = Sonnet 6 サブエージェント。Fable・Opus の役割は不変 |
-| D35 | 実装役はプラグイン同梱エージェント | `agents/builder.md` を新設(`model: claude-sonnet-6`)。B-2 は Agentツールで `subagent_type: "r-super-loop-powers:builder"` を指定して起動する |
+| D34 | 役割の再配置 | 技術PM・技術レビュー・グラレコ = codex `gpt-6.1-sol`(read-only)。実装役 = Sonnet 5.5 サブエージェント。Fable・Opus の役割は不変 |
+| D35 | 実装役はプラグイン同梱エージェント | `agents/builder.md` を新設(`model: claude-sonnet-5-5`)。B-2 は Agentツールで `subagent_type: "r-super-loop-powers:builder"` を指定して起動する |
 | D36 | プロセス系スキルの遮断 | builder の `tools` から **Skill と Agent を外す**(許可: Read / Write / Edit / Glob / Grep / Bash / PowerShell)。v0.6 の `--disable plugins` の代わりに、superpowers 等のプロセス系スキルを起動する手段そのものを持たせない |
 | D37 | 実行契約とロール指示の移設 | v0.6 で `codex-run.ps1` が builder に差し込んでいた実行契約(スコープ外禁止・コミット/push禁止・要件再定義禁止・否定リスト・`~/.claude/` 等への接触禁止)とロール指示(実行者であり設計しない・`TECHNICAL ASSESSMENT` に従う・安全>安定>速度・アセスが実コードと合わないときの扱い)を `agents/builder.md` の本文へ移す |
 | D38 | 報告形式は据え置き | builder の最終メッセージは `schemas/impl-report.json` に従うJSON(コードフェンス1つで囲む)。スキーマ本体は変更しない |
@@ -46,7 +46,7 @@ v0.7 では実装を Claude 側(Sonnet 6 サブエージェント)へ移し、**
 | D44 | グラレコの回収 | codex(`-Role grareco`、read-only)に画像を生成させ、Opus が `codex-status.ps1` の `THREAD_ID` から `~/.codex/generated_images/<thread_id>/` の最新 `ig_*.png` を `grareco.png` にコピーする。失敗しても非ブロック(従来どおり唯一の例外) |
 | D45 | 旧 codex-env.json の扱い | `model` が `gpt-6.1-sol` でない、または `techpmModel` / `sandbox` 等の旧キーを持つ env を `codex-run.ps1` が検出したら `WARN:` を出し、再開時にプリフライトを再実行させる |
 
-## 3. 実装役(Sonnet 6)の契約
+## 3. 実装役(Sonnet 5.5)の契約
 
 ### 3-1. `agents/builder.md`
 
@@ -55,7 +55,7 @@ frontmatter:
 ```yaml
 name: builder
 description: r-super-loop-powers の B-2 実装役。承認済みの技術アセスに従ってマイルストーンを実装し、impl-report.json 形式の自己検証報告を返す。ゴールループ外では使わない。
-model: claude-sonnet-6
+model: claude-sonnet-5-5
 tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 ```
 
