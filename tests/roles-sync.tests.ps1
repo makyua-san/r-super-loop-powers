@@ -28,7 +28,12 @@ foreach ($id in @('overview', 'opus', 'proxy-fable', 'gate-fable', 'techpm', 're
     }
 }
 Check 'missing-id-empty' ((Get-RoleCharter -RolesFile $roles -Ids @('overview', 'nope')) -eq '') 'unknown id must yield empty'
-Check 'missing-file-empty' ((Get-RoleCharter -RolesFile (Join-Path $root 'nope.md') -Ids @('overview')) -eq '') 'missing file must yield empty'
+$ErrorActionPreference = 'Stop'
+$bad = 'x'
+try { $bad = Get-RoleCharter -RolesFile ("C:\bad" + [char]13 + "path.md") -Ids @('overview') } catch { $bad = 'threw' }
+$ErrorActionPreference = 'Continue'
+Check 'invalid-path-empty' ($bad -eq '') "invalid path must yield empty, got: $bad"
+Check 'missing-file-empty'((Get-RoleCharter -RolesFile (Join-Path $root 'nope.md') -Ids @('overview')) -eq '') 'missing file must yield empty'
 
 # Drift is detected, and Copy repairs it (on temp copies).
 $t = Join-Path ([IO.Path]::GetTempPath()) ('roles-' + [guid]::NewGuid().ToString('N'))

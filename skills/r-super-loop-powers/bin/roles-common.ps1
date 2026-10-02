@@ -19,8 +19,12 @@ function Get-RoleSection([string]$Text, [string]$Id) {
 }
 
 function Get-RoleCharter([string]$RolesFile, [string[]]$Ids) {
-    if (-not $RolesFile -or -not (Test-Path -LiteralPath $RolesFile)) { return '' }
-    $text = [System.IO.File]::ReadAllText($RolesFile, (New-Object System.Text.UTF8Encoding($false)))
+    if (-not $RolesFile) { return '' }
+    # An unreadable or malformed path is "missing", not a crash in the caller.
+    try {
+        if (-not (Test-Path -LiteralPath $RolesFile)) { return '' }
+        $text = [System.IO.File]::ReadAllText($RolesFile, (New-Object System.Text.UTF8Encoding($false)))
+    } catch { return '' }
     if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
     $parts = @()
     foreach ($id in $Ids) {
