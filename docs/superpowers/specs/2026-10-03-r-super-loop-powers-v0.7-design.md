@@ -25,7 +25,7 @@ v0.7 では実装を Claude 側(Sonnet 5.5 サブエージェント)へ移し、
 | F3 | プラグインは `agents/` を同梱でき、`<plugin名>:<agent名>` として呼べる | code.claude.com/docs/en/plugins/create.md | `subagent_type: "r-super-loop-powers:builder"` |
 | F4 | サブエージェント定義に reasoning effort の欄は無い(frontmatter は name / description / tools / disallowedTools / model / permissionMode / skills / maxTurns / hooks 等) | sub-agents.md | B-1 の effort 選択は意味を失う |
 | F5 | ユーザーの `~/.codex/config.toml` のモデル表記は `gpt-6.1-sol` | 実ファイル | codex側のモデルIDは `gpt-6.1-sol` とする(ユーザー表記「gpt-6-sol-6.1」と同一のものと解釈。実装役はユーザー訂正(2026-10-03)により Sonnet 5.5) |
-| F6 | codex の image_gen は画像を `~/.codex/generated_images/<thread_id>/ig_*.png` に保存する | 実ディレクトリ | read-only でも画像は生成でき、`THREAD_ID` から回収先が決まる(実装時スモークで確定) |
+| F6 | codex の image_gen は画像を `~/.codex/generated_images/<thread_id>/*.png`(実測のファイル名は `exec-<uuid>.png`) に保存する | 実ディレクトリ | read-only でも画像は生成でき、`THREAD_ID` から回収先が決まる(実装時スモークで確定) |
 
 **未確定(実装計画の最初のスモークテストで確定する)**: (a) `claude-sonnet-5-5` というIDで実際にサブエージェントが起動するか (b) `gpt-6.1-sol` が `max` effort で疎通するか (c) read-only サンドボックスの codex が image_gen を使え、F6 の場所に画像が残るか。(a) が通らない場合はユーザーに正しいIDを確認する(黙ってエイリアスに落とさない)。
 
@@ -43,7 +43,7 @@ v0.7 では実装を Claude 側(Sonnet 5.5 サブエージェント)へ移し、
 | D41 | 技術レビューを高信頼のB-5に置く | 高信頼の独立レビューア(PL-003)を Opus サブから codex `gpt-6.1-sol` / `max` / `-Role reviewer` に替える。観点は技術のみ(正しさ・アセスとの整合・リスク・検証の妥当性)。要件適合は見ない(B-6 の Fable の仕事)。MVP は変更なし(Opus セルフチェック) |
 | D42 | codex は常に read-only | `codex-run.ps1` のロールは `techpm / reviewer / grareco` の3つ。全ロールで `-s read-only` を固定し、`-Sandbox` 引数・`builder` ロール・`writable_roots` 処理を削除する |
 | D43 | preflight の簡素化 | 確認するのは codex 実体の解決・バージョン・認証・`gpt-6.1-sol` の疎通(read-only)のみ。書き込みプローブ・`-AllowUnsandboxed`・`-WritableRoot`・`-ProbeDir`・`-BuilderFallbackModel`・`-TechPmModel` を削除する。codex-env.json のモデルは `model` 1つ |
-| D44 | グラレコの回収 | codex(`-Role grareco`、read-only)に画像を生成させ、Opus が `codex-status.ps1` の `THREAD_ID` から `~/.codex/generated_images/<thread_id>/` の最新 `ig_*.png` を `grareco.png` にコピーする。失敗しても非ブロック(従来どおり唯一の例外) |
+| D44 | グラレコの回収 | codex(`-Role grareco`、read-only)に画像を生成させ、Opus が `codex-status.ps1` の `THREAD_ID` から `~/.codex/generated_images/<thread_id>/` の最新の `*.png` を `grareco.png` にコピーする。失敗しても非ブロック(従来どおり唯一の例外) |
 | D45 | 旧 codex-env.json の扱い | `model` が `gpt-6.1-sol` でない、または `techpmModel` / `sandbox` 等の旧キーを持つ env を `codex-run.ps1` が検出したら `WARN:` を出し、再開時にプリフライトを再実行させる |
 
 ## 3. 実装役(Sonnet 5.5)の契約

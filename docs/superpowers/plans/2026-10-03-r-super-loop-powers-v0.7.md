@@ -69,7 +69,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File skills\r-super-loop-powers\b
 ```
 `THREAD_ID:` の値を `$tid` として:
 ```powershell
-Get-ChildItem "$env:USERPROFILE\.codex\generated_images\$tid" -Filter 'ig_*.png'
+Get-ChildItem "$env:USERPROFILE\.codex\generated_images\$tid" -Filter '*.png'
 ```
 Expected: `STATUS: OK` かつ png が1枚以上。無ければ `~/.codex/generated_images` 以下を `-Recurse` で新しい順に探して実際の保存場所を記録する(Task 6 の回収手順をその場所に合わせる)。
 
@@ -899,7 +899,7 @@ B-3 の後ろにある `報告ファイルは UTF-8 なので、...` の段落�
 2. **グラレコ(Codex経由・読み取り専用)**: human-report.md / gate-decision.md / retro.md の要点を `grareco-input.md` にまとめ、`templates/grareco-prompt.md` の指示文を埋めて codex に渡す(MVPの非Checkpoint分はB-6中間クローズで生成済みのため、ここではCheckpointマイルストーン分を生成する)。`codex-run.ps1 -Role grareco`(effort `medium` が既定)→ `codex-status.ps1` で待つ。codex は read-only なので画像を自分では保存しない。`STATUS: OK` なら、出力の `THREAD_ID:` を使って Opus が画像を回収する:
    ```powershell
    $codexHome = (Get-Content -Raw "<codex-env.json>" | ConvertFrom-Json).codexHome
-   $img = Get-ChildItem (Join-Path $codexHome "generated_images\<THREAD_ID>") -Filter 'ig_*.png' | Sort-Object LastWriteTime | Select-Object -Last 1
+   $img = Get-ChildItem (Join-Path $codexHome "generated_images\<THREAD_ID>") -Filter '*.png' | Sort-Object LastWriteTime | Select-Object -Last 1
    Copy-Item -LiteralPath $img.FullName -Destination "<milestone-dir>\grareco.png"
    ```
    生成・回収のどちらで失敗しても grareco-input.md を残したまま先へ進む(ループ完了をブロックしない) — ここは `STATUS: OK` 以外でも停止しない唯一の例外である。call-logに記録(codex-grareco)。
