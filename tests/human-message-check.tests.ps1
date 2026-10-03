@@ -24,6 +24,18 @@ $doneGoal = Join-Path $doneProj 'docs\r-super-loop-powers\g0'
 New-Item -ItemType Directory -Path $doneGoal -Force | Out-Null
 [IO.File]::WriteAllText((Join-Path $doneGoal 'state.md'), "# state - g0`n- phase: done`n", $utf8)
 $log = Join-Path $goal 'hook-log.md'
+# Real state.md files decorate the phase ("- phase: **done**(2026-09-25)").
+$decoProj = Join-Path $t 'decoproj'
+$decoDone = Join-Path $decoProj 'docs\r-super-loop-powers\g0'
+New-Item -ItemType Directory -Path $decoDone -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $decoDone 'state.md'), "# state - g0`n- phase: **done**(2026-09-25) finished`n", $utf8)
+$mixProj = Join-Path $t 'mixproj'
+$mixActive = Join-Path $mixProj 'docs\r-super-loop-powers\g1'
+$mixDone = Join-Path $mixProj 'docs\r-super-loop-powers\g2'
+New-Item -ItemType Directory -Path $mixActive, $mixDone -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $mixActive 'state.md'), "- phase: milestone-implementation`n", $utf8)
+Start-Sleep -Milliseconds 50
+[IO.File]::WriteAllText((Join-Path $mixDone 'state.md'), "- phase: **done**`n", $utf8)
 
 function New-Judge([string]$Name, [string]$Body) {
     $p = Join-Path $t "$Name.cmd"
@@ -35,6 +47,7 @@ $judgeNg = New-Judge 'ng' 'echo {"ok": false, "reason": "put the conclusion firs
 $judgeNgDot = New-Judge 'ngdot' 'echo {"ok": false, "reason": "put the conclusion first."}'
 $judgeFail = New-Judge 'fail' 'exit /b 3'
 $judgeJunk = New-Judge 'junk' 'echo not json at all'
+$judgeArgs = New-Judge 'args' ("echo %*> `"%~dp0args.txt`"`r`n" + 'echo {"ok": true}')
 function Was-Called([string]$Name) { return (Test-Path (Join-Path $t "$Name.called")) }
 function Reset-Called { Get-ChildItem $t -Filter '*.called' | Remove-Item -Force }
 function Last-LogLine { if (Test-Path $log) { return @(Get-Content -Encoding UTF8 $log)[-1] } return '' }
@@ -66,6 +79,7 @@ Get-ChildItem -Path C:\foo | Where-Object { $_.Length -gt 0 } | Select-Object Na
 
 $r = Invoke-Hook (New-Input $en $proj) $judgeOk
 Check 'english-blocked' ($r.Code -eq 0 -and $r.Out -match '"decision"\s*:\s*"block"' -and $r.Out -match '\[r-super-loop-powers\]') $r.Out
+Check 'english-reason-keeps-requested-english' ($r.Out -match 'コードブロック') $r.Out
 Check 'english-no-judge' (-not (Was-Called 'ok')) 'judge must not run when the ratio already fails'
 Check 'english-logged' ((Last-LogLine) -match '\| BLOCK \| ja-ratio=') (Last-LogLine)
 
@@ -104,6 +118,31 @@ Check 'code-heavy-not-blocked' ($r.Out -eq '' -and (Was-Called 'ok')) $r.Out
 
 $r = Invoke-Hook (New-Input $mixed $proj) $judgeOk
 Check 'mixed-terms-not-blocked' ($r.Out -eq '' -and (Was-Called 'ok')) $r.Out
+
+$longLog = (1..30 | ForEach-Object { "error line $_ failed to open the file because access was denied" }) -join "`n"
+$tilde = "結果です。`n~~~`n$longLog`n~~~`n以上です。"
+$r = Invoke-Hook (New-Input $tilde $proj) $judgeOk
+Check 'tilde-fence-not-blocked' ($r.Out -eq '' -and (Was-Called 'ok')) $r.Out
+$unclosed = "結果です。ログを貼ります。`n``````text`n$longLog"
+$r = Invoke-Hook (New-Input $unclosed $proj) $judgeOk
+Check 'unclosed-fence-not-blocked' ($r.Out -eq '' -and (Was-Called 'ok')) $r.Out
+
+$r = Invoke-Hook (New-Input $en $decoProj) $judgeOk
+Check 'decorated-done-skips' ($r.Out -eq '' -and -not (Was-Called 'ok') -and -not (Test-Path (Join-Path $decoDone 'hook-log.md'))) $r.Out
+[IO.File]::WriteAllText((Join-Path $decoDone 'state.md'), "- phase: **完了(終了条件 (b))**`n", $utf8)
+$r = Invoke-Hook (New-Input $en $decoProj) $judgeOk
+Check 'japanese-done-skips' ($r.Out -eq '' -and -not (Was-Called 'ok')) $r.Out
+[IO.File]::WriteAllText((Join-Path $decoDone 'state.md'), "- phase: 実装完了。**段 0(人間)待ち**`n", $utf8)
+$r = Invoke-Hook (New-Input $en $decoProj) $judgeOk
+Check 'waiting-is-active' ($r.Out -match '"decision"\s*:\s*"block"') $r.Out
+Remove-Item (Join-Path $decoDone 'hook-log.md') -ErrorAction SilentlyContinue
+[IO.File]::WriteAllText((Join-Path $decoDone 'state.md'), "# state - g0`n- phase: **done**(2026-09-25) finished`n", $utf8)
+$r = Invoke-Hook (New-Input $ja $mixProj) $judgeOk
+Check 'active-goal-chosen-over-decorated-done' ((Test-Path (Join-Path $mixActive 'hook-log.md')) -and -not (Test-Path (Join-Path $mixDone 'hook-log.md'))) 'log landed in the wrong goal'
+
+$r = Invoke-Hook (New-Input $ja $proj) $judgeArgs
+$argText = ''; if (Test-Path (Join-Path $t 'args.txt')) { $argText = Get-Content -Raw (Join-Path $t 'args.txt') }
+Check 'judge-has-no-tools' ($argText -match '--tools' -and $argText -match '--strict-mcp-config' -and $argText -match 'haiku') $argText
 
 $r = Invoke-Hook (New-Input '' $proj) $judgeOk
 Check 'empty-message-skips' ($r.Out -eq '' -and -not (Was-Called 'ok')) $r.Out

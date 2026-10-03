@@ -44,19 +44,24 @@ function Write-StdoutUtf8([string]$Text) {
 }
 
 # Newest state.md whose phase is not done; $null when the loop is not active here.
+# Real state files decorate the value ("- phase: **done**(2026-09-25)", "**完了(...)**"),
+# so only the leading word counts ("実装完了。…待ち" is still active).
 function Find-GoalDir([string]$Cwd) {
     $root = Join-Path $Cwd 'docs\r-super-loop-powers'
     if (-not (Test-Path -LiteralPath $root)) { return $null }
     $states = @(Get-ChildItem -LiteralPath $root -Directory | ForEach-Object {
             Get-Item -LiteralPath (Join-Path $_.FullName 'state.md') -ErrorAction SilentlyContinue })
     $active = @($states | Where-Object {
-            $_ -and ([System.IO.File]::ReadAllText($_.FullName, $Utf8) -notmatch '(?m)^\s*-\s*phase:\s*done\s*$') })
+            $_ -and ([System.IO.File]::ReadAllText($_.FullName, $Utf8) -notmatch '(?m)^\s*-\s*phase:\s*\**\s*(done\b|完了)') })
     if ($active.Count -eq 0) { return $null }
     return ($active | Sort-Object LastWriteTime | Select-Object -Last 1).DirectoryName
 }
 
 function Get-ProseText([string]$Text) {
+    # Fenced blocks (``` or ~~~), including one left open at the end of the reply.
     $t = [regex]::Replace($Text, '(?s)```.*?```', ' ')
+    $t = [regex]::Replace($t, '(?s)~~~.*?~~~', ' ')
+    $t = [regex]::Replace($t, '(?s)(```|~~~).*$', ' ')
     $t = [regex]::Replace($t, '`[^`\r\n]*`', ' ')
     $t = [regex]::Replace($t, 'https?://\S+', ' ')
     $t = [regex]::Replace($t, '(?i)\b[a-z]:\\\S*', ' ')
@@ -74,15 +79,19 @@ function Get-JaStats([string]$Prose) {
 
 function Invoke-Judge([string]$Prompt) {
     $exe = $env:RSLP_JUDGE_CMD
-    $argList = @()
     if (-not $exe) {
         $cmd = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $cmd) { throw 'claude CLI not found on PATH' }
         $exe = $cmd.Source
-        $settings = Join-Path ([System.IO.Path]::GetTempPath()) 'rslp-judge-settings.json'
-        [System.IO.File]::WriteAllText($settings, '{"disableAllHooks":true}', $Utf8)
-        $argList = @('-p', '--model', $JudgeModel, '--output-format', 'text', '--settings', $settings)
     }
+    $settings = Join-Path ([System.IO.Path]::GetTempPath()) 'rslp-judge-settings.json'
+    if (-not (Test-Path -LiteralPath $settings)) {
+        [System.IO.File]::WriteAllText($settings, '{"disableAllHooks":true}', $Utf8)
+    }
+    # The reply under judgement is untrusted text: the judge gets no tools and no
+    # MCP servers (which also makes it start faster).
+    $argList = @('-p', '--model', $JudgeModel, '--output-format', 'text', '--settings', $settings,
+        '--tools', '', '--strict-mcp-config')
     $quoted = ($argList | ForEach-Object { '"' + $_ + '"' }) -join ' '
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     if ($exe -match '\.(cmd|bat)$') {
@@ -156,7 +165,7 @@ try {
     $stats = Get-JaStats (Get-ProseText $message)
     $ratioText = '{0:0.00}' -f $stats.Ratio
     if ($stats.Units -ge $MinUnits -and $stats.Ratio -lt $JaRatioMin) {
-        Send-Block "日本語で書かれていません(日本語の比率 $ratioText、基準 $JaRatioMin)"
+        Send-Block "日本語で書かれていません(日本語の比率 $ratioText、基準 $JaRatioMin)。ユーザーが英語の文面そのものを求めた場合は、その文面はコードブロックに入れ、説明は日本語で書いてください"
         Write-HookLog $goalDir 'BLOCK' $ratioText 'not japanese'
         exit 0
     }
