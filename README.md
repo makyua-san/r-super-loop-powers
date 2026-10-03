@@ -64,6 +64,15 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 | 技術レビュー(高信頼のみ) | codex `gpt-6.1-sol` / max / read-only | B-5の技術レビュー。要件適合はB-6のゲートFableが判定 |
 | グラレコ | codex `gpt-6.1-sol` / medium / read-only | 画像生成のみ。Opus が generated_images から回収 |
 
+各役の立場・決めること・決めないことは `skills/r-super-loop-powers/references/roles.md`(ロール憲章)が正本。実装役には `scripts/sync-roles.ps1` でエージェント定義へ同期し、codex には `codex-run.ps1` が、Fable には Opus が配る。
+
+### 人間向け応答チェック(hooks)
+
+プラグインの Stop フック(`hooks/hooks.json` → `hooks/human-message-check.ps1`)が、ゴールループ中(`docs/r-super-loop-powers/*/state.md` があり phase が done でない)に Opus が人間へ返す応答を検査する。日本語の比率(英語は単語単位で数える。しきい値 0.6)を機械で、明瞭・端的さ(結論が冒頭か・何を答えればよいか・内部用語・冗長さ)を `claude -p --model haiku` で判定し、不合格なら1回だけ書き直させる。結果は goal 直下の `hook-log.md`。
+- 動作要件: `claude` CLI が PATH にあること。判定役が動かない・時間切れのときは検査なしで通す
+- ループ中は応答のたびに判定役を1回呼ぶ(実測で1回 7〜15 秒の遅延と少量の消費)
+- AskUserQuestion ツールでの質問: 対象になるか(Stop フックが発火するか)は未確認。実際のゴールループで hook-log.md に行が増えるかで確かめる
+
 ## E2Eテスト(導入・改訂時に1周まわす)
 
 小さなプロジェクトで1ゴール(中間マイルストーン1つ以上+Checkpoint1つ以上)を実行し、以下を確認する:
@@ -92,17 +101,20 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - [ ] grareco.png が codex の組み込み image_gen で(read-only のまま)生成され、Opus が generated_images から回収している
 - [ ] セッションを切って再起動 → state.md から現在地が復元される
 - [ ] 高信頼強度ではv0.2のフロー(人間参加ブレスト・マイルストーン毎Acceptance)が維持される
+- [ ] ゴールループ中に Opus が人間へ返した応答で hook-log.md に PASS / BLOCK が記録され、BLOCK のときは書き直した応答が返ってくる
+- [ ] 代理Fable・ゲートFable の依頼文の冒頭にロール憲章(全体図+該当節)が貼られている(call-log の各呼び出しで確認)
 
 ## リポジトリ構成
 
 - `.claude-plugin/` — Claude版プラグインマニフェスト・マーケットプレイス定義
-- `skills/r-super-loop-powers/` — Claude版 SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check) / `schemas/`(実装報告スキーマ) / `references/`(codex呼び出し規約)
+- `skills/r-super-loop-powers/` — Claude版 SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check) / `schemas/`(実装報告スキーマ) / `references/`(codex呼び出し規約・ロール憲章 roles.md)
 - `agents/` — Claude版の実装役エージェント定義(`builder.md`、Sonnet 5.5)
-- `tests/` — `bin/` スクリプトのテスト(`powershell -File tests\<名>.tests.ps1`)
+- `hooks/` — Claude版の Stop フック(人間向け応答チェック: `hooks.json` / `human-message-check.ps1` / `judge-prompt.md`)
+- `tests/` — `bin/`・`hooks/`・`scripts/sync-roles.ps1` のテスト(`powershell -File tests\<名>.tests.ps1`)
 - `.codex-plugin/` — Codex版プラグインマニフェスト(`plugin.json`)
 - `.agents/plugins/` — Codex版マーケットプレイス定義(`marketplace.json`)
 - `skills-codex/r-super-loop-powers/` — Codex版 SKILL.md / policy.md / schemas/(ゲート判定・エスカレーション判定の構造化出力スキーマ) / templates/(9種、`skills/` からの複写)
-- `scripts/` — `sync-templates.ps1`(templatesの複写・一致検証)
+- `scripts/` — `sync-templates.ps1`(templatesの複写・一致検証) / `sync-roles.ps1`(ロール憲章を実装役の定義へ同期・一致検証)
 - `docs/superpowers/specs/` — 設計仕様書
 - `docs/superpowers/plans/` — 実装計画
 

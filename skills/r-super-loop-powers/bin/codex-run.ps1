@@ -38,6 +38,9 @@ param(
     # open brainstorming/writing-plans instead of answering (seen in 36 of 37 runs).
     # Built-in system skills (imagegen etc.) remain.
     [switch]$KeepPlugins,
+    # Source of the role charter (process map + this role's section). Empty = the
+    # skill's references/roles.md. Tests point it elsewhere.
+    [string]$RolesFile,
     # internal
     [switch]$Worker,
     [string]$JobFile
@@ -46,6 +49,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 . (Join-Path $PSScriptRoot 'codex-common.ps1')
+. (Join-Path $PSScriptRoot 'roles-common.ps1')
 
 # The orchestrator's non-negotiables, prepended to every prompt so they cannot be
 # forgotten by whoever writes the task text. Item 5 matters most: the final
@@ -241,11 +245,23 @@ if (-not $rawPrompt.Trim()) { throw "PromptFile is empty: $PromptFile" }
 
 # Normalize to UTF-8 without BOM and prepend the contract. A BOM on stdin shows up
 # as a stray character in the first instruction.
+$warnings = @()
 $normalizedPrompt = Join-Path $RunDir "$Label.prompt.txt"
 if ($NoPreamble) {
     Write-TextFile $normalizedPrompt $rawPrompt
 } else {
-    Write-TextFile $normalizedPrompt ($ExecutionContract + $RoleBriefs[$Role] + $rawPrompt)
+    # The charter tells codex where it sits in the whole loop and who decides what
+    # it must not (references/roles.md). A missing charter degrades the prompt but
+    # must not stop a delegation.
+    if (-not $RolesFile) { $RolesFile = Join-Path (Split-Path -Parent $PSScriptRoot) 'references\roles.md' }
+    $charter = Get-RoleCharter -RolesFile $RolesFile -Ids @('overview', $Role)
+    $charterBlock = ''
+    if ($charter) {
+        $charterBlock = "== ROLE CHARTER (your place in the whole process; from references/roles.md) ==`n" + $charter + "`n== END ROLE CHARTER ==`n`n"
+    } else {
+        $warnings += "roles section not found in $RolesFile; the prompt goes out without the role charter."
+    }
+    Write-TextFile $normalizedPrompt ($ExecutionContract + $charterBlock + $RoleBriefs[$Role] + $rawPrompt)
 }
 
 $outFile = Join-Path $RunDir "$Label.out.jsonl"
@@ -256,7 +272,6 @@ foreach ($stale in @($outFile, $errFile, $lastFile, $exitFile, (Join-Path $RunDi
 }
 
 
-$warnings = @()
 if (-not $Model) { $Model = [string]$codexEnv.model }
 $legacyKeys = @('techpmModel', 'sandbox', 'sandboxWriteOk', 'writableRoots', 'builderFallbackFrom') |
     Where-Object { $codexEnv.PSObject.Properties.Name -contains $_ }

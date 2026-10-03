@@ -78,6 +78,20 @@ $rvPrompt = Get-Content -Raw (Join-Path $t 'runs\rv.prompt.txt')
 Check 'reviewer-sees-untracked' ($rvPrompt -match 'git status --porcelain --untracked-files=all' -and $rvPrompt -match 'untracked files directly') 'reviewer brief does not cover untracked files'
 Check 'contract-complete-answer' ($rvPrompt -match 'complete answer' -and $rvPrompt -notmatch 'self-verification report') 'contract item 5 wording'
 
+# v0.8: role charter from references/roles.md, between the contract and the brief.
+$tpPrompt = Get-Content -Raw -Encoding UTF8 (Join-Path $t 'runs\tp.prompt.txt')
+$iContract = $tpPrompt.IndexOf('== END EXECUTION CONTRACT ==')
+$iCharter = $tpPrompt.IndexOf('== ROLE CHARTER')
+$iBrief = $tpPrompt.IndexOf('== ROLE: TECH PM')
+$iBody = $tpPrompt.LastIndexOf('hello')
+Check 'charter-order' ($iContract -ge 0 -and $iCharter -gt $iContract -and $iBrief -gt $iCharter -and $iBody -gt $iBrief) "contract=$iContract charter=$iCharter brief=$iBrief body=$iBody"
+Check 'charter-techpm-sections' ($tpPrompt -match '\(overview\)' -and $tpPrompt -match '\(techpm\)' -and $tpPrompt -notmatch '\(builder\)') 'techpm charter sections'
+Check 'charter-reviewer-section' ((Get-Content -Raw -Encoding UTF8 (Join-Path $t 'runs\rv.prompt.txt')) -match '\(reviewer\)') 'reviewer charter section'
+Check 'charter-grareco-section' ((Get-Content -Raw -Encoding UTF8 (Join-Path $t 'runs\gr.prompt.txt')) -match '\(grareco\)') 'grareco charter section'
+$r = Invoke-Run $env1 'nrf' @('-Role', 'techpm', '-RolesFile', (Join-Path $t 'missing-roles.md'))
+Check 'missing-roles-warns' ($r.Code -eq 0 -and $r.Out -match '(?m)^WARN: roles section not found') $r.Out
+Check 'missing-roles-no-charter' ((Get-Content -Raw (Join-Path $t 'runs\nrf.prompt.txt')) -notmatch '== ROLE CHARTER') 'charter present without roles.md'
+
 Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
 Write-Output 'ALL PASS'

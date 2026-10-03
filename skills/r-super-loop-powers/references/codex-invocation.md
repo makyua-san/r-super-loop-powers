@@ -63,7 +63,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
 - effort の既定は techpm / reviewer = `max`、grareco = `medium`。通常は指定しない。
 - プラグインは既定で無効(`--disable plugins`)。組み込みのシステムスキル(imagegen 等)は残る。
 - `-Label` は委譲ごとに一意にする(`[A-Za-z0-9._-]+`)。同じラベルで実行中のものがあると起動を拒否する。
-- プロンプトの先頭には**実行契約**(スコープ外禁止・コミット禁止・要件再定義禁止・否定リスト・最終メッセージが唯一の出力・**読み取り専用**)と**ロール指示**が自動で差し込まれる。
+- プロンプトの先頭には、**実行契約**(スコープ外禁止・コミット禁止・要件再定義禁止・否定リスト・最終メッセージが唯一の出力・**読み取り専用**)→ **ロール憲章**(`references/roles.md` の全体図+該当ロールの節。見つからなければ `WARN: roles section not found` を出して省く)→ **ロール指示** の順で自動で差し込まれ、その後にタスク本文が続く。
 
 ### 2-3. 完了を待つ
 
@@ -116,7 +116,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-statu
 
 ## 4. プロンプトに必ず入れる要素
 
-実行契約とロール指示は自動で先頭に付くので、**タスク固有の内容だけ**を書く。
+実行契約・ロール憲章・ロール指示は自動で先頭に付くので、**タスク固有の内容だけ**を書く。
 
 - **techpm**: SKILL.md「技術PM(Codex)共通契約」のプロンプト必須要素
 - **reviewer**: SKILL.md B-5(高信頼)に列挙した入力。特に委譲前の HEAD と各委譲の `impl-check.ps1` の `CHANGED_FILES_ACTUAL:` 行を渡し、`git diff <base>` と `git status --porcelain --untracked-files=all` で実際の変更を見させる(未追跡の新規ファイルは `git diff` に出ないので直接読ませる)

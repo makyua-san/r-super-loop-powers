@@ -8,12 +8,13 @@ description: Use when starting or resuming a goal-engineering loop (ゴールル
 あなた(このスキルを実行するモデル)は **Opus 5.5メインセッション** として、ゴールループの進行管理と成果物作成を担当する。
 このスキルは **責任・ゲート層** である: いまどのフェーズか、次に必要な成果物は何か、誰が実行し誰が判定するか、人間へ返すタイミングだけを制御する。
 作業の進め方(HOW)はSuperpowersのスキルに完全に委ね、その内部手順には一切干渉しない。MVPモードでは、Superpowersのスキルが人間に求める質問・承認への応答を**代理Fable**(ユーザー目線)と**技術PM**(Codex。実装責任者目線でHOWに係る問いに回答)が分担する(相手が変わるだけで、スキルの手順は変えない)。
+各担当(あなた自身を含む)の立場・決めること・決めないことは `references/roles.md`(ロール憲章)にまとめてある。
 
 Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(policy.md「上位原則」)。MVPモードでは人間にHOWの確定を求めず、ヒアリングで無自覚の既知を表面化した上でAgentがHOWを仮説化する(policy.md「MVPモードの原則」)。ループ・テスト・レビュー・承認は、AまたはBに寄与する場合にのみ実施する。ループ終了条件は回数ではなく「適合性への十分な確信 + 残存する重要な未知が許容可能」。
 
 ## 起動時チェック(毎回必ず実行)
 
-1. **ポリシー読込**: このスキルと同じディレクトリの `policy.md` を読む。以後の全判断はこのポリシーに従う。
+1. **ポリシー読込**: このスキルと同じディレクトリの `policy.md` と `references/roles.md`(ロール憲章)を読む。以後の全判断はこのポリシーに従う。
 2. **モデル確認**: 自分が **Opus 5.5** で動いていない場合(特にFableの場合)、ユーザーに `/model opus` への切替を提案し(`opus` aliasは最新のOpus=5.5に解決される)、切替またはユーザーの明示的な続行指示があるまでフェーズ作業を開始しない(PL-002)。
 3. **状態復元**: 対象プロジェクトで `docs/r-super-loop-powers/*/state.md` を探す(Globツール)。
    - 見つかった場合: 最新の state.md を読み、「現在フェーズ / 強度 / 対象マイルストーン / 次のCheckpoint / 次のゲート」を1〜3行でユーザーに報告し、そのフェーズの手順から再開する。
@@ -53,6 +54,7 @@ docs/r-super-loop-powers/<goal-slug>/
 ├── goal-plan-submission.md  # A-5 Goal Plan承認用submission
 ├── goal-gate-decision.md    # A-6 Goal Gate判定
 ├── call-log.md              # 呼び出し記録(PL-007)
+├── hook-log.md              # 人間向け応答チェック(プラグインの Stop フック)の判定記録。フックが自動で追記する
 ├── codex-env.json           # 起動時チェック6のプリフライト結果(codex実体・モデル)
 ├── codex-runs/              # codex(技術PM・技術レビュー・グラレコ)の実行記録
 ├── impl-runs/               # 実装役(Sonnet)への委譲記録(<ラベル>.prompt.md / .base.txt / .pre.txt / .report.md)
@@ -82,6 +84,7 @@ docs/r-super-loop-powers/<goal-slug>/
 - updated: YYYY-MM-DD HH:MM
 ```
 
+各欄の値は上の語をそのまま書く(`**done**` のような装飾をしない。`phase` はフックがゴールループ中かどうかの判定に使う)。
 **全フェーズで「state.md更新 → 作業」の順**を守る。フェーズ遷移の前に、下表の必須成果物が揃っているかを必ず確認し、欠落があれば次へ進まない。
 
 ## フェーズと成果物契約
@@ -126,6 +129,7 @@ fable / codex-techpm(技術PM) / codex-review(技術レビュー) / codex-grarec
 - Agentツールで `model: "fable"` を指定して起動する。役割は2種類あり、**インスタンスを分離する**:
   - **代理Fable(MVPのA-1a〜A-4)**: nameを付けて1インスタンスを起動し、SendMessageで往復を継続する(ヒアリング文脈の保持)。入力は goal-seed / goal-frame / hearing-log / retro抜粋 / templates構造のみ。
   - **ゲート・判断Fable(A-6 / B-1 / B-4 / B-6 / B-9)**: 呼び出しごとに新規インスタンス。初回入力は goal-frame.md 全文 + 対象文書(submission / escalation / milestone定義) + assumptions.md の関連部分(未検証仮定) + 必要なら hearing-log.md の関連部分のみ。対象プロジェクトの生コード・全会話履歴を渡さない(PL-009)。追加資料を要求した場合のみ、SendMessageで1往復の追加提供を行う。
+- **ロール憲章の貼り付け(必須)**: 起動時の依頼文の冒頭に、`<skill-dir>\references\roles.md` の「全体図 (overview)」節と該当ロールの節(代理Fable → 「代理Fable (proxy-fable)」、ゲート・判断Fable → 「ゲートFable (gate-fable)」)を**原文のまま**貼り、その後に各工程の依頼文を続ける。要約・言い換えをしない。代理Fableには初回起動時だけ貼る(SendMessage の往復では再送しない)。
 - ゲート判定の出力契約: `PASS | REVISE | REPLAN | BLOCKED` のいずれか1つ + 根拠(5行以内) + REVISE/REPLANの場合は戻り先工程と対象の未知・仮定。
 - 判定観点(プロンプトに明記する): (1) goal-frame.md の承認基準を満たすか (2) 残存する重要な未知が許容可能か(goal-frameの終了条件と照合) (3) 仮定が事実として扱われていないか (4) 否定リスト違反の仮説がないか。「動くか」ではなくゴール整合を見る。
 
@@ -143,7 +147,7 @@ codex の起動・完了判定・STATUS の読み方は `references/codex-invoca
     -WorkDir "<対象プロジェクトのルート>" -RunDir "<goal-dir>\codex-runs" `
     -Role techpm -Effort max -TimeoutMinutes 30
   ```
-  `-Role techpm` は必須(ゲート保護ルール10)。スクリプトが read-only を強制し、技術PMのペルソナ(助言役・プロセス系スキルを起動しない・実装役がそのまま実行できる具体度で答える)を実行契約の後に自動で差し込む。既存コードは技術PM自身が読んでよい。
+  `-Role techpm` は必須(ゲート保護ルール10)。スクリプトが read-only を強制し、技術PMのペルソナ(助言役・プロセス系スキルを起動しない・実装役がそのまま実行できる具体度で答える)を実行契約の後に自動で差し込む。既存コードは技術PM自身が読んでよい。ロール憲章(roles.md の全体図+該当ロールの節)もスクリプトが実行契約の直後に自動で差し込むので、プロンプトに貼らない。
 - **完了と採否**: `codex-status.ps1` で待ち、`STATUS: OK` のときだけ `FINAL_MESSAGE_FILE` を回答として採用する(ゲート保護ルール8)。OK以外は1回だけ再実行し、再度失敗したらユーザーへ報告し、Opusの判断で代替して続行するかを確認する(黙って代筆しない)。
 - **プロンプト必須要素**:
   1. 役割宣言: 「あなたはこのゴールの技術PM(実装責任者)。自分が実装を担当する前提で、HOWに関する問いに答えよ。コードは書かない・変更しない」
@@ -216,7 +220,7 @@ Fable PASS後、人間に提示して実装へ進む承認を得る。
 - **MVP**: **マイルストーン単位でまとめて**1〜数回、実装役に委譲する。タスク細分化しない。
 - **高信頼**: subagent-driven developmentと同じプロセス構造でタスク分解し、個別に委譲する。
 
-実装役は Agentツールの `subagent_type: "r-super-loop-powers:builder"`(`claude-sonnet-5-5`。Skill / Agent ツールを持たないので、プロセス系スキルを起動できない)で起動する。実行契約(スコープ・コミット禁止・要件再定義禁止・否定リスト)・ロール指示・出力契約はエージェント定義に入っているので、プロンプトに書かなくてよい。
+実装役は Agentツールの `subagent_type: "r-super-loop-powers:builder"`(`claude-sonnet-5-5`。Skill / Agent ツールを持たないので、プロセス系スキルを起動できない)で起動する。実行契約(スコープ・コミット禁止・要件再定義禁止・否定リスト)・ロール指示・出力契約・ロール憲章(roles.md の全体図+実装役の節。`scripts/sync-roles.ps1` で同期)はエージェント定義に入っているので、プロンプトに書かなくてよい。
 
 **(1) 委譲前の基準を記録する**
 次の2つを保存する。ラベルは `m<n>-impl`(再委譲は `m<n>-impl-2` …。高信頼でタスクごとに委譲する場合は `m<n>-t<k>-impl`)。
@@ -296,7 +300,7 @@ acceptance.md に ACCEPT があることを確認してから、Checkpoint範囲
 
 ## Learning フェーズ
 
-1. **Retrospective(Opus)**: `templates/retrospective-note.md` に従い `retro.md` を作成する(**MVP: Checkpoint単位** — 対象は前回Checkpoint以降の全マイルストーン / **高信頼**: マイルストーン単位)。観測欄に、ループ回数(REVISE/REPLAN差し戻し数)・呼び出し数(call-log.mdから)・主要フェーズ所要時間(call-logの時刻から概算)・**発見された未知**を記載する(5:1目安はワークフローB以降、ハード制限ではない)。「再利用できる知見・テンプレート候補」に「なし」以外を書いた場合、**このプロジェクトの外でも効くもの**は orca-meta の MCP tool `record_lesson` で送る(軸は person / agent / method。orca-meta プラグインが導入されていない環境では省略してよい)。
+1. **Retrospective(Opus)**: `templates/retrospective-note.md` に従い `retro.md` を作成する(**MVP: Checkpoint単位** — 対象は前回Checkpoint以降の全マイルストーン / **高信頼**: マイルストーン単位)。観測欄に、ループ回数(REVISE/REPLAN差し戻し数)・呼び出し数(call-log.mdから)・主要フェーズ所要時間(call-logの時刻から概算)・**発見された未知**・人間向け応答の書き直し回数(hook-log.md の BLOCK 行の数と、主な理由)を記載する(5:1目安はワークフローB以降、ハード制限ではない)。「再利用できる知見・テンプレート候補」に「なし」以外を書いた場合、**このプロジェクトの外でも効くもの**は orca-meta の MCP tool `record_lesson` で送る(軸は person / agent / method。orca-meta プラグインが導入されていない環境では省略してよい)。
 2. **グラレコ(Codex経由・読み取り専用)**: human-report.md / gate-decision.md / retro.md の要点を `grareco-input.md` にまとめ、`templates/grareco-prompt.md` の指示文を埋めて codex に渡す(MVPの非Checkpoint分はB-6中間クローズで生成済みのため、ここではCheckpointマイルストーン分を生成する)。`codex-run.ps1 -Role grareco`(effort `medium` が既定)→ `codex-status.ps1` で待つ。codex は read-only なので画像を自分では保存しない。`STATUS: OK` なら、出力の `THREAD_ID:` を使って Opus が画像を回収する:
    ```powershell
    $codexHome = (Get-Content -Raw "<codex-env.json>" | ConvertFrom-Json).codexHome
@@ -305,6 +309,13 @@ acceptance.md に ACCEPT があることを確認してから、Checkpoint範囲
    ```
    グラレコ実行では codex が組み込み imagegen の SKILL.md を読むため `BOUNDARY_HIT` の `WARN:` が出るが、これは想定どおりで無視してよい。生成・回収のどちらで失敗しても grareco-input.md を残したまま先へ進む(ループ完了をブロックしない) — ここは `STATUS: OK` 以外でも停止しない唯一の例外である。call-logに記録(codex-grareco)。
 3. **次へ**: 未実装マイルストーンがあれば state.md を milestone-implementation に戻し(「次のCheckpoint」欄を更新)、B-1 から繰り返す。全マイルストーン完了なら state.md を done にし、ゴール全体の完了を人間に報告する。
+
+## 人間向け応答チェック(プラグインの Stop フック)
+
+ゴールループ中(対象プロジェクトに `docs/r-super-loop-powers/*/state.md` があり、phase が done でない)は、あなたが人間へ返す応答をプラグインの Stop フックが検査する。見るのは、日本語で書かれているか / 結論やお願いしたいことが冒頭にあるか / 何をどう答えればよいか明確か / 内部の工程記号・スクリプト名・ステータス語を説明なしに使っていないか / 端的か、の5点。
+- 最初からこの基準で書く。工程記号(A-6 など)やスクリプト名を使うときは、人間に分かる言葉を添える。
+- `[r-super-loop-powers] 人間向けの応答を書き直してください` で始まる指摘を受けたら、内容(事実・判断・質問)は変えずに、指摘どおり書き直した応答を改めて返す。書き直しを求められるのは1回だけ。
+- 判定結果は goal 直下の `hook-log.md` に残る(Learning で回数を見る)。判定役が動かない場合は検査なしで通る(記録は ERROR)。
 
 ## 例外・停止時の扱い
 
