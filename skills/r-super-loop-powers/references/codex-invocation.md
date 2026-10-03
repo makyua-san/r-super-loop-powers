@@ -78,7 +78,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-statu
 
 | STATUS | 意味 | やること |
 |---|---|---|
-| `OK` | 完了し、報告も整合している | `FINAL_MESSAGE_FILE` を読んで回答として採用する |
+| `OK` | 完了し、報告も整合している(grareco は画像ファイルがあることも条件) | `FINAL_MESSAGE_FILE` を読んで回答として採用する。grareco は `IMAGE:` の画像を回収する |
+| `NO_IMAGE` | grareco が完了したが `generated_images\<THREAD_ID>` に画像が無い | 画像なしとして記録して先へ進む(grareco はループを止めない) |
 | `FAILED` | 非ゼロ終了、または `turn.failed` | **実装済みとして扱わない。** 原因が認証・モデル可用性ならユーザーへ報告して停止 |
 | `SUSPECT` | exit 0 だが `turn.completed` が無い / 最終メッセージが空 | 失敗として扱い、再委譲 |
 | `TIMEOUT` | タイムアウトで強制終了 | 範囲を分割するかeffortを下げて再委譲。**書きかけのファイルが残っているので先に `git status`** |
@@ -92,7 +93,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-statu
 
 - `WARN: codex touched N off-limits path(s)` — codexがスキルファイル等を読みに行った兆候。回答より探索に時間を使った可能性がある。
 - `WARN: stderr looks like an auth failure` — `codex login` が必要。
-- `THREAD_ID:` — グラレコの画像回収に使う(SKILL.md Learning 2)。
+- `THREAD_ID:` — codex のスレッドID。grareco の画像はこのIDのフォルダに保存される。
+- `IMAGE:` — grareco で見つかった画像のパス(SKILL.md Learning 2 でこれをコピーする)。
+- `WARN: codex's shell could not start` — codex のシェルが起動できず、ファイルを1つも読めていない。techpm / reviewer の回答はコードに基づいていないので採用しない。
 
 ### 2-5. 中断する
 
@@ -110,7 +113,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-statu
 
 - **`python3` を使わない。** 環境によっては Microsoft Store のスタブが入っており、`Python` とだけ出力して失敗する。JSONLの解析が必要なら `node`(codexの実体と同じもの)を使う。
 - **報告ファイルを `Get-Content` の既定エンコーディングで読まない。** Windows PowerShell 5.1 の既定はANSIで、日本語が文字化けする。`Get-Content -Encoding utf8` かReadツールを使う。ファイル自体はUTF-8で正しい。
-- **`CODEX_HOME` が端末アプリによって書き換えられていることがある。** preflight が `AUTH:` 行で実際に使われている場所を表示するので、想定と違う場合はそれを疑う。
+- **`CODEX_HOME` が端末アプリによって書き換えられていることがある。** preflight が `AUTH:` 行で実際に使われている場所を表示するので、想定と違う場合はそれを疑う。codex-run.ps1 は codex-env.json の `codexHome` を worker に明示的に渡す(WMI で起動した worker は呼び出し元の環境変数を引き継がないため。渡さないと codex が `~/.codex` を使い、画像も別の場所に保存される。issue #4)。
+- **Windows の elevated サンドボックスでシェルが起動しないことがある。** `Failed to create unified exec process: helper_unknown_error: setup refresh had errors` が出て、read-only の codex がファイルを1つも読めない。codex-run.ps1 と preflight は `-c windows.sandbox=unelevated` を渡す(unelevated でも read-only は効いており、書き込みは拒否されることを確認済み)。
 
 ---
 

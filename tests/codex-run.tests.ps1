@@ -92,6 +92,22 @@ $r = Invoke-Run $env1 'nrf' @('-Role', 'techpm', '-RolesFile', (Join-Path $t 'mi
 Check 'missing-roles-warns' ($r.Code -eq 0 -and $r.Out -match '(?m)^WARN: roles section not found') $r.Out
 Check 'missing-roles-no-charter' ((Get-Content -Raw (Join-Path $t 'runs\nrf.prompt.txt')) -notmatch '== ROLE CHARTER') 'charter present without roles.md'
 
+# Issue #4: the elevated Windows sandbox cannot start a shell on some machines
+# ("helper_unknown_error: setup refresh had errors"); unelevated still denies writes.
+Check 'unelevated-sandbox' ($m.command -match '-c windows\.sandbox=unelevated') $m.command
+$preArgs = Get-Content -Raw (Join-Path $skillDir 'bin\codex-preflight.ps1')
+Check 'preflight-unelevated-sandbox' ($preArgs -match "'windows\.sandbox=unelevated'") 'preflight probe does not use the unelevated sandbox'
+# Issue #4: the WMI-spawned worker does not inherit CODEX_HOME, so codex wrote its
+# images to ~/.codex while the orchestrator looked in the preflight's codexHome.
+$gm = Get-Meta 'gr'
+Check 'meta-codexhome' ($gm.codexHome -eq $t) "meta.codexHome=$($gm.codexHome)"
+$gj = Get-Content -Raw (Join-Path $t 'runs\gr.job.json') | ConvertFrom-Json
+Check 'job-codexhome' ($gj.codexHome -eq $t) "job.codexHome=$($gj.codexHome)"
+$runSrc = Get-Content -Raw $run
+Check 'worker-sets-codexhome' ($runSrc -match '\$env:CODEX_HOME\s*=\s*\$job\.codexHome') 'worker does not set CODEX_HOME from the job'
+$grPrompt = Get-Content -Raw (Join-Path $t 'runs\gr.prompt.txt')
+Check 'grareco-no-image-honest' ($grPrompt -match 'NO_IMAGE_GENERATED' -and $grPrompt -match 'call image_gen directly') 'grareco brief lacks the no-image rule'
+
 Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
 Write-Output 'ALL PASS'

@@ -301,12 +301,9 @@ acceptance.md に ACCEPT があることを確認してから、Checkpoint範囲
 ## Learning フェーズ
 
 1. **Retrospective(Opus)**: `templates/retrospective-note.md` に従い `retro.md` を作成する(**MVP: Checkpoint単位** — 対象は前回Checkpoint以降の全マイルストーン / **高信頼**: マイルストーン単位)。観測欄に、ループ回数(REVISE/REPLAN差し戻し数)・呼び出し数(call-log.mdから)・主要フェーズ所要時間(call-logの時刻から概算)・**発見された未知**・人間向け応答の書き直し回数(hook-log.md の BLOCK 行の数と、主な理由)を記載する(5:1目安はワークフローB以降、ハード制限ではない)。「再利用できる知見・テンプレート候補」に「なし」以外を書いた場合、**このプロジェクトの外でも効くもの**は orca-meta の MCP tool `record_lesson` で送る(軸は person / agent / method。orca-meta プラグインが導入されていない環境では省略してよい)。
-2. **グラレコ(Codex経由・読み取り専用)**: human-report.md / gate-decision.md / retro.md の要点を `grareco-input.md` にまとめ、`templates/grareco-prompt.md` の指示文を埋めて codex に渡す(MVPの非Checkpoint分はB-6中間クローズで生成済みのため、ここではCheckpointマイルストーン分を生成する)。`codex-run.ps1 -Role grareco`(effort `medium` が既定)→ `codex-status.ps1` で待つ。codex は read-only なので画像を自分では保存しない。`STATUS: OK` なら、出力の `THREAD_ID:` を使って Opus が画像を回収する:
-   ```powershell
-   $codexHome = (Get-Content -Raw "<codex-env.json>" | ConvertFrom-Json).codexHome
-   $img = Get-ChildItem (Join-Path $codexHome "generated_images\<THREAD_ID>") -Filter '*.png' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
-   if ($img) { Copy-Item -LiteralPath $img.FullName -Destination "<milestone-dir>\grareco.png" }
-   ```
+2. **グラレコ(Codex経由・読み取り専用)**: human-report.md / gate-decision.md / retro.md の要点を `grareco-input.md` にまとめ、`templates/grareco-prompt.md` の指示文を埋めて codex に渡す(MVPの非Checkpoint分はB-6中間クローズで生成済みのため、ここではCheckpointマイルストーン分を生成する)。`codex-run.ps1 -Role grareco`(effort `medium` が既定)→ `codex-status.ps1` で待つ。codex は read-only なので画像を自分では保存しない。grareco の成否は**画像ファイルがあるかどうか**で決まる(codex の「生成しました」という最終メッセージは根拠にしない)。`codex-status.ps1` が `generated_images\<THREAD_ID>\*.png` を探し、
+   - `STATUS: OK` なら `IMAGE:` 行に画像のパスが出る。Opus がそれをコピーする: `Copy-Item -LiteralPath "<IMAGE: の値>" -Destination "<milestone-dir>\grareco.png"`
+   - `STATUS: NO_IMAGE` は、実行は終わったが画像が無い状態。call-log に「画像なし」と記録して先へ進む
    グラレコ実行では codex が組み込み imagegen の SKILL.md を読むため `BOUNDARY_HIT` の `WARN:` が出るが、これは想定どおりで無視してよい。生成・回収のどちらで失敗しても grareco-input.md を残したまま先へ進む(ループ完了をブロックしない) — ここは `STATUS: OK` 以外でも停止しない唯一の例外である。call-logに記録(codex-grareco)。
 3. **次へ**: 未実装マイルストーンがあれば state.md を milestone-implementation に戻し(「次のCheckpoint」欄を更新)、B-1 から繰り返す。全マイルストーン完了なら state.md を done にし、ゴール全体の完了を人間に報告する。
 

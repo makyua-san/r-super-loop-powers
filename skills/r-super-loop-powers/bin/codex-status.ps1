@@ -5,6 +5,8 @@
   Prints "KEY: VALUE" lines ending in STATUS + NEXT. STATUS is one of:
 
     OK       exit 0, turn.completed seen, final message present    -> read it
+             (grareco: and an image exists under generated_images)
+    NO_IMAGE grareco finished but produced no image file           -> no image to collect
     FAILED   non-zero exit, or codex reported an error event       -> do NOT proceed
     TIMEOUT  killed at the timeout, or no exit before -WaitMinutes -> do NOT proceed
     SUSPECT  exit 0 but no turn.completed or no final message      -> do NOT proceed
@@ -91,6 +93,7 @@ $errorCount = 0
 $commandCount = 0
 $reasoningCount = 0
 $agentMessages = 0
+$shellBroken = 0
 $tokens = 0
 $threadId = ''
 # Item-level "error" entries are often warnings (e.g. unknown model metadata) that
@@ -145,6 +148,7 @@ if (Test-Path -LiteralPath $outFile) {
                                 [void]$recent.Add('ran: ' + ($cmd -replace '\s+', ' '))
                                 if ($cmd -match $boundaryPattern) { [void]$boundaryHits.Add(($cmd -replace '\s+', ' ')) }
                             }
+                            if ([string]$ev.item.aggregated_output -match 'Failed to create unified exec process|setup refresh had errors') { $shellBroken++ }
                         }
                         'reasoning' {
                             $reasoningCount++
@@ -252,6 +256,36 @@ if ($null -ne $exitCode) {
     }
 }
 
+# --- grareco: the image is the result -----------------------------------------
+# A grareco run is a success only if an image file exists. Its final message is a
+# self-report (issue #4: "generated one image" with no image), and codex exec
+# --json emits no image_gen event even when it worked, so look for the file.
+# Candidates: the home the run was launched with, then the defaults, because runs
+# launched before the CODEX_HOME fix wrote to ~/.codex regardless.
+$image = ''
+if ($meta.PSObject.Properties.Name -contains 'role' -and $meta.role -eq 'grareco' -and $status -eq 'OK') {
+    $homes = @()
+    if ($meta.PSObject.Properties.Name -contains 'codexHome' -and $meta.codexHome) { $homes += [string]$meta.codexHome }
+    if ($env:CODEX_HOME) { $homes += $env:CODEX_HOME }
+    if ($env:USERPROFILE) { $homes += (Join-Path $env:USERPROFILE '.codex') }
+    if ($threadId) {
+        foreach ($h in ($homes | Select-Object -Unique)) {
+            $dir = Join-Path $h "generated_images\$threadId"
+            if (-not (Test-Path -LiteralPath $dir)) { continue }
+            $png = Get-ChildItem -LiteralPath $dir -Filter '*.png' -File -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime | Select-Object -Last 1
+            if ($png) { $image = $png.FullName; break }
+        }
+    }
+    if (-not $image) {
+        $status = 'NO_IMAGE'
+        $reason = "the run finished but no image exists under generated_images\$threadId (searched: $(($homes | Select-Object -Unique) -join ', ')). The final message is not evidence."
+        $next = 'Record codex-grareco as failed (no image) in call-log.md and move on; grareco never blocks the loop.'
+    } else {
+        $next = "Copy the image: $image"
+    }
+}
+
 # --- report -------------------------------------------------------------------
 Write-Kv 'LABEL' $Label
 Write-Kv 'RUN_DIR' $RunDir
@@ -266,6 +300,7 @@ Write-Kv 'TOKENS' $tokens
 if ($threadId) { Write-Kv 'THREAD_ID' $threadId }
 Write-Kv 'FINAL_MESSAGE_FILE' $lastFile
 Write-Kv 'FINAL_MESSAGE_BYTES' $finalBytes
+if ($image) { Write-Kv 'IMAGE' $image }
 if ($meta.outputSchema -and $finalBytes -gt 0) {
     $report = $null
     try { $report = $finalMessage | ConvertFrom-Json } catch { $report = $null }
@@ -325,6 +360,11 @@ if ($firstError) { Write-Kv 'ERROR' $firstError }
 if ($errTail) { Write-Kv 'STDERR_TAIL' $errTail }
 if ($authSmell) { Write-Kv 'WARN' 'stderr looks like an auth failure. Run: codex login' }
 if ($sandboxSmell) { Write-Kv 'WARN' 'codex could not build its Windows sandbox, so its shell commands were rejected. This is usually double-sandboxing (an outer sandbox around codex). Re-run the delegation from an unsandboxed shell.' }
+if ($shellBroken -gt 0) {
+    $hint = 'Re-launch with the current codex-run.ps1 (it passes windows.sandbox=unelevated).'
+    if ([string]$meta.command -match 'windows\.sandbox=unelevated') { $hint = 'Even the unelevated sandbox failed: report this to the human; the answer is not grounded in the code.' }
+    Write-Kv 'WARN' "codex's shell could not start ($shellBroken command(s) failed with helper_unknown_error), so it read no files. $hint"
+}
 if ($boundaryHits.Count -gt 0) {
     Write-Kv 'WARN' ("codex touched $($boundaryHits.Count) off-limits path(s) -- it may have read orchestrator files instead of the repo. Consider re-running with a tighter scope.")
     foreach ($h in ($boundaryHits | Select-Object -First 3)) { Write-Kv 'BOUNDARY_HIT' $h.Substring(0, [Math]::Min(160, $h.Length)) }
