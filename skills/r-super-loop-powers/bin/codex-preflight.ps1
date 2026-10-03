@@ -185,6 +185,7 @@ function Invoke-Probe([string]$PromptText) {
             '-s', 'read-only',
             '-c', 'approval_policy=never',
             '-c', 'model_reasoning_effort=low',
+            '-c', 'windows.sandbox=unelevated',
             '--skip-git-repo-check',
             '--disable', 'plugins',
             '-m', $Model

@@ -129,6 +129,10 @@ system skill's SKILL.md (under ~/.codex/skills/.system/imagegen/) in order to us
 built-in image_gen tool. Nothing else under skills/, SKILL.md, ~/.codex/ or ~/.claude/.
 Read only the input file named in the task. Generate the image with image_gen and
 do not try to save or copy it anywhere -- the orchestrator collects it.
+If that SKILL.md cannot be read, do not stop: call image_gen directly anyway.
+If you did not actually call image_gen (or it failed), your final message MUST
+start with "NO_IMAGE_GENERATED:" and the reason. Never say an image was made
+unless image_gen returned one; the orchestrator checks for the file.
 == END ROLE ==
 
 '@
@@ -160,6 +164,10 @@ if ($Worker) {
     $note = ''
     try {
         Write-WorkerLog "worker start: $($job.file) $($job.argLine)"
+        # Win32_Process.Create does not pass the launcher's environment on, so
+        # without this codex falls back to ~/.codex: a different auth and config
+        # than the preflight checked, and images land where nobody looks (issue #4).
+        if ($job.codexHome) { $env:CODEX_HOME = $job.codexHome }
         $p = Register-ProcessHandle (Start-Process -FilePath $job.file -ArgumentList $job.argLine `
                 -RedirectStandardInput $job.promptFile `
                 -RedirectStandardOutput $job.outFile `
@@ -295,6 +303,10 @@ $codexArgs = $inv.Prefix + @(
     '-s', $Sandbox,
     '-c', 'approval_policy=never',
     '-c', "model_reasoning_effort=$Effort",
+    # The elevated Windows sandbox fails to start any shell on some machines
+    # ("helper_unknown_error: setup refresh had errors"), so codex cannot read a
+    # single file. Unelevated still enforces read-only (measured: writes denied).
+    '-c', 'windows.sandbox=unelevated',
     '--skip-git-repo-check',
     '-o', $lastFile
 )
@@ -310,6 +322,8 @@ foreach ($d in $AddDir) {
 }
 
 $argLine = ConvertTo-ArgLine $codexArgs
+$codexHome = ''
+if ($codexEnv.PSObject.Properties.Name -contains 'codexHome') { $codexHome = [string]$codexEnv.codexHome }
 $jobFile = Join-Path $RunDir "$Label.job.json"
 $job = [ordered]@{
     label          = $Label
@@ -319,6 +333,7 @@ $job = [ordered]@{
     promptFile     = $normalizedPrompt
     outFile        = $outFile
     errFile        = $errFile
+    codexHome      = $codexHome
     timeoutMinutes = $TimeoutMinutes
 }
 Write-TextFile $jobFile ($job | ConvertTo-Json -Depth 4)
@@ -365,6 +380,7 @@ $meta = [ordered]@{
     model          = $Model
     effort         = $Effort
     sandbox        = $Sandbox
+    codexHome      = $codexHome
     outputSchema   = ''
     timeoutMinutes = $TimeoutMinutes
     workerPid      = $workerPid
