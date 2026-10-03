@@ -71,7 +71,7 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 プラグインの Stop フック(`hooks/hooks.json` → `hooks/human-message-check.ps1`)が、ゴールループ中(`docs/r-super-loop-powers/*/state.md` があり phase が done でない)に Opus が人間へ返す応答を検査する。日本語の比率(英語は単語単位で数える。しきい値 0.6)を機械で、明瞭・端的さ(結論が冒頭か・何を答えればよいか・内部用語・冗長さ)を `claude -p --model haiku` で判定し、不合格なら1回だけ書き直させる。結果は goal 直下の `hook-log.md`。
 - 動作要件: `claude` CLI が PATH にあること。判定役が動かない・時間切れのときは検査なしで通す
 - ループ中は応答のたびに判定役を1回呼ぶ(実測で1回 7〜15 秒の遅延と少量の消費)
-- AskUserQuestion ツールでの質問: (Task 6 の結果を書く)
+- AskUserQuestion ツールでの質問: 対象になるか(Stop フックが発火するか)は未確認。実際のゴールループで hook-log.md に行が増えるかで確かめる
 
 ## E2Eテスト(導入・改訂時に1周まわす)
 
