@@ -49,6 +49,7 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 
 - **新規ゴール**: 対象プロジェクトで `/r-super-loop-powers` を起動し、やりたいこと(Goal Seed)を伝える
 - **再開**: 同じコマンドで起動すると `docs/r-super-loop-powers/*/state.md` から現在地を復元する
+- **境界リセット(v0.9)**: 人間待ち・Checkpoint 確定・Goal Plan 承認の直後(と、文脈が 20 万トークンを超えたマイルストーン境界)で Opus が `state.md` を更新して印 `resume-pending` を置き、`/clear` を頼む。`/clear` のあと「続けて」と送ると、SessionStart フックが `bin/resume-packet.ps1` の再開パケット(state.md・否定リスト・制約/承認基準/終了条件・未検証仮定・直近の判定と retro・未完了の委譲。要約なし)を注入して再開する。コンパクションは使わない(制約の取りこぼしを避けるため)
 
 フェーズの流れ(MVP): ヒアリング(Fable往復・無自覚の既知の表面化) → Goal Frame(強度確定) → ブレスト/Spec/Plan(Fable代理回答+技術PM回答・Checkpoint配置) → Goal Gate(Fable) → 人間承認(WHATレベル) → マイルストーン自律実装(Sonnet実装役 → impl-check → Fableゲート → 判断記録+グラレコ+中間コミット) → Checkpoint: 評価パッケージ → 人間受け入れ → 確定 → 振り返り
 
@@ -62,16 +63,24 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 | 技術PM | codex `gpt-6.1-sol` / max / read-only | 代理ブレストで**HOWに係る問い**に実装責任者として回答し、A-4末にマイルストーン別の実装アセスを出す |
 | 実装 | Sonnet 5.5(`r-super-loop-powers:builder`) | 技術PMのアセスに従う実行者として実装と自己検証(Skill/Agentツールなし・ブレスト/計画はしない)。成否は `impl-check.ps1` が判定 |
 | 技術レビュー(高信頼のみ) | codex `gpt-6.1-sol` / max / read-only | B-5の技術レビュー。要件適合はB-6のゲートFableが判定 |
-| グラレコ | codex `gpt-6.1-sol` / medium / read-only | 画像生成のみ。Opus が generated_images から回収 |
+| グラレコ | codex `gpt-6.1-sol` / low / read-only | 画像生成のみ。Opus が generated_images から回収 |
 
 各役の立場・決めること・決めないことは `skills/r-super-loop-powers/references/roles.md`(ロール憲章)が正本。実装役には `scripts/sync-roles.ps1` でエージェント定義へ同期し、codex には `codex-run.ps1` が、Fable には Opus が配る。
 
-### 人間向け応答チェック(hooks)
+### プラグインのフック
 
-プラグインの Stop フック(`hooks/hooks.json` → `hooks/human-message-check.ps1`)が、ゴールループ中(`docs/r-super-loop-powers/*/state.md` があり phase が done でない)に Opus が人間へ返す応答を検査する。日本語の比率(英語は単語単位で数える。しきい値 0.6)を機械で、明瞭・端的さ(結論が冒頭か・何を答えればよいか・内部用語・冗長さ)を `claude -p --model haiku` で判定し、不合格なら1回だけ書き直させる。結果は goal 直下の `hook-log.md`。
+| フック | 発火 | 役割 | 記録(goal 直下 `hook-log.md`) |
+|---|---|---|---|
+| `hooks/resume-inject.ps1` | SessionStart(`startup` / `clear`) | `resume-pending` があれば再開パケットを一回限り注入(24 時間で無効) | `RESUME` / `STALE` / `ERROR` |
+| `hooks/context-meter.ps1` | PostToolUse(`Agent`) | トランスクリプト末尾から文脈サイズを測り、20 万トークン以上なら通知 | `CTX` |
+| `hooks/human-message-check.ps1` | Stop | 人間向け応答の日本語・明瞭さの検査(v0.8) | `PASS` / `BLOCK` / `ERROR` |
+
+Stop フックは、ゴールループ中(`docs/r-super-loop-powers/*/state.md` があり phase が done でない)に Opus が人間へ返す応答を検査する。日本語の比率(英語は単語単位で数える。しきい値 0.6)を機械で、明瞭・端的さ(結論が冒頭か・何を答えればよいか・内部用語・冗長さ)を `claude -p --model haiku` で判定し、不合格なら1回だけ書き直させる。
 - 動作要件: `claude` CLI が PATH にあること。判定役が動かない・時間切れのときは検査なしで通す
 - ループ中は応答のたびに判定役を1回呼ぶ(実測で1回 7〜15 秒の遅延と少量の消費)
 - AskUserQuestion ツールでの質問: 対象になるか(Stop フックが発火するか)は未確認。実際のゴールループで hook-log.md に行が増えるかで確かめる
+- 再開パケットの注入は Claude Code の上限(1 フィールド 10,000 文字)に合わせて 9,500 文字に収める。超える分は後方の節(マイルストーン・仮定・判定・retro)だけが切られ、全文は goal 直下の `resume-packet.md` に残る。`/clear` はフックからは起こせないので人間が打つ
+- 記帳は `bin/loop-log.ps1`(call-log 追記・state.md の欄更新・再開の印を 1 回で)、実装役の委譲前後は `bin/impl-check.ps1 -Prepare / -SaveReport` で 1 ターンにまとめる
 
 ## E2Eテスト(導入・改訂時に1周まわす)
 
@@ -103,14 +112,18 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - [ ] 高信頼強度ではv0.2のフロー(人間参加ブレスト・マイルストーン毎Acceptance)が維持される
 - [ ] ゴールループ中に Opus が人間へ返した応答で hook-log.md に PASS / BLOCK が記録され、BLOCK のときは書き直した応答が返ってくる
 - [ ] 代理Fable・ゲートFable の依頼文の冒頭にロール憲章(全体図+該当節)が貼られている(call-log の各呼び出しで確認)
+- [ ] 人間待ちに入る応答の末尾に `/clear` の依頼があり、`/clear` 後に再開パケットが注入され、最初の応答でフェーズ / 強度 / マイルストーン / 次のゲート / 待ちが復唱される(hook-log.md に `RESUME`)
+- [ ] call-log.md の追記と state.md の更新が `loop-log.ps1` で行われ、記帳だけのターンが無い
+- [ ] 実装役への Agent prompt がファイルのパスだけで、再委譲の prompt が `## 再委譲の差分` + 初回のパスになっている
+- [ ] hook-log.md に `CTX` 行があり、retro の観測欄に最大文脈と境界リセット回数が書かれている
 
 ## リポジトリ構成
 
 - `.claude-plugin/` — Claude版プラグインマニフェスト・マーケットプレイス定義
-- `skills/r-super-loop-powers/` — Claude版 SKILL.md(オーケストレーター) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check) / `schemas/`(実装報告スキーマ) / `references/`(codex呼び出し規約・ロール憲章 roles.md)
+- `skills/r-super-loop-powers/` — Claude版 SKILL.md(共通: 起動時チェック・契約・境界リセット) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check・記帳 loop-log・再開パケット resume-packet) / `schemas/`(実装報告スキーマ) / `references/`(ワークフローA `workflow-a.md`・ワークフローB `workflow-b.md`・codex呼び出し規約・ロール憲章 roles.md)
 - `agents/` — Claude版の実装役エージェント定義(`builder.md`、Sonnet 5.5)
-- `hooks/` — Claude版の Stop フック(人間向け応答チェック: `hooks.json` / `human-message-check.ps1` / `judge-prompt.md`)
-- `tests/` — `bin/`・`hooks/`・`scripts/sync-roles.ps1` のテスト(`powershell -File tests\<名>.tests.ps1`)
+- `hooks/` — Claude版のフック(`hooks.json` / 再開注入 `resume-inject.ps1` / 文脈メーター `context-meter.ps1` / 人間向け応答チェック `human-message-check.ps1` + `judge-prompt.md` / 共通部 `hook-common.ps1`)
+- `tests/` — `bin/`・`hooks/`・`scripts/sync-roles.ps1`・SKILL の配置のテスト(`powershell -File tests\<名>.tests.ps1`)
 - `.codex-plugin/` — Codex版プラグインマニフェスト(`plugin.json`)
 - `.agents/plugins/` — Codex版マーケットプレイス定義(`marketplace.json`)
 - `skills-codex/r-super-loop-powers/` — Codex版 SKILL.md / policy.md / schemas/(ゲート判定・エスカレーション判定の構造化出力スキーマ) / templates/(9種、`skills/` からの複写)
