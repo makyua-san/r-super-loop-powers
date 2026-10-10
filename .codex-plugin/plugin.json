@@ -1,6 +1,6 @@
 {
   "name": "r-super-loop-powers",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Superpowersの上位に薄く重なるゴールループ・オーケストレーション層(Codex版)。フェーズ管理、承認ゲート、ヒューマン・イン・ザ・ループ配置、役割別モデル分担(sol進行/sol判定/sol代理/luna実装)を制御する。",
   "author": {
     "name": "rnakayama",
