@@ -108,12 +108,12 @@ Opus メインセッションの文脈肥大(1セッション 87 万トークン
 loop-log.ps1 -GoalDir <dir>
   [-Who fable|codex-techpm|codex-review|codex-grareco|sonnet-builder -Purpose <text> [-Phase <phase>]]
   [-SetPhase <v>] [-SetIntensity <v>] [-SetMilestone <v>] [-SetCheckpoint <v>] [-SetOwner <v>] [-SetGate <v>] [-SetWait <v>] [-SetCodexRun <v>]
-  [-Set 'key=value']
+  [-Set 'key=value'] [-Clear 'key,key']
   [-Mark]
 ```
 
 - `-Who` があれば `call-log.md` に `YYYY-MM-DD HH:MM | <who> | <phase> | <purpose>` を追記する(`-Phase` 省略時は state.md の `phase:` の値。同じ呼び出しで `-SetPhase` を渡しても、ログの phase は更新前の値 = その呼び出しが起きたフェーズ)。call-log.md が無ければ見出し付きで作る。
-- `-Set*` は state.md の `- <欄>: ...` 行の値を置き換える。対応: `-SetPhase`→`phase` / `-SetIntensity`→`強度` / `-SetMilestone`→`milestone` / `-SetCheckpoint`→`次のCheckpoint` / `-SetOwner`→`担当` / `-SetGate`→`次のゲート` / `-SetWait`→`待ち` / `-SetCodexRun`→`codex-run`。それ以外の欄は `-Set 'key=value'`(1 つ。最初の `=` で分ける)。1 つでも見つからなければ何も書かずに `STATUS: FAILED` / `REASON:` で非 0 終了。欄が 1 つでも変わるとき `updated:` を現在時刻(`YYYY-MM-DD HH:MM`)にする。
+- `-Set*` は state.md の `- <欄>: ...` 行の値を置き換える。対応: `-SetPhase`→`phase` / `-SetIntensity`→`強度` / `-SetMilestone`→`milestone` / `-SetCheckpoint`→`次のCheckpoint` / `-SetOwner`→`担当` / `-SetGate`→`次のゲート` / `-SetWait`→`待ち` / `-SetCodexRun`→`codex-run`。それ以外の欄は `-Set 'key=value'`(1 つ。最初の `=` で分ける)。欄を「なし(`-`)」に戻すときは `-Clear '待ち,codex-run'`(カンマ区切り)を使う(単独の `-` は `powershell -File` の起動引数として渡せず、powershell.exe が黙って終了する。実測 2026-10-10。空文字の値も `-` と扱う)。1 つでも見つからなければ何も書かずに `STATUS: FAILED` / `REASON:` で非 0 終了。欄が 1 つでも変わるとき `updated:` を現在時刻(`YYYY-MM-DD HH:MM`)にする。
 - `-Mark` は `resume-packet.ps1 -GoalDir <dir>`(全文を `<goal-dir>\resume-packet.md` に書く)を実行して組めることを確かめてから `resume-pending` を書く。組めなければ印を置かずに非 0 終了。
 - `-Who` / `-Set` / `-Mark` のどれも無ければ引数エラー。
 - 出力: `LOGGED: <行>` / `SET: <key>` / `UPDATED: <時刻>` / `MARKED: <path>` / `STATUS: OK`。
