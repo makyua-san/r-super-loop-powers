@@ -15,7 +15,9 @@ $a = Get-Text (Join-Path $skillDir 'references\workflow-a.md')
 $b = Get-Text (Join-Path $skillDir 'references\workflow-b.md')
 
 Check 'workflow-files-exist' ($a -ne '' -and $b -ne '') 'references/workflow-a.md / workflow-b.md missing'
-Check 'skill-size' ((Get-Item -LiteralPath $skillFile).Length -le 24KB) ("SKILL.md is " + (Get-Item -LiteralPath $skillFile).Length + " bytes")
+# Measured on LF-normalized text: core.autocrlf checks files out with CRLF, which must not change the verdict.
+$skillBytes = [Text.Encoding]::UTF8.GetByteCount(($s -replace "`r`n", "`n"))
+Check 'skill-size' ($skillBytes -le 24KB) ("SKILL.md is $skillBytes bytes (LF-normalized)")
 Check 'skill-points-to-workflows' ($s -match 'references/workflow-a\.md' -and $s -match 'references/workflow-b\.md') 'workflow references'
 Check 'skill-common-sections' ($s -match '(?m)^## 起動時チェック' -and $s -match '(?m)^## 記録ルール' -and $s -match '(?m)^## 境界リセット' -and $s -match '(?m)^## Fableサブエージェント共通契約' -and $s -match '(?m)^## 読むものと読まないもの') 'common sections'
 Check 'skill-mentions-tools' ($s -match 'loop-log\.ps1' -and $s -match 'resume-packet\.ps1' -and $s -match 'resume-pending' -and $s -match 'context-meter\.ps1' -and $s -match '再開パケット') 'tool names'
