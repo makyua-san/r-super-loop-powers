@@ -1,8 +1,8 @@
 #Requires -Version 5.1
 # Shared helpers for the r-super-loop-powers codex helpers.
-# ASCII only on purpose: Windows PowerShell 5.1 reads a BOM-less .ps1 as ANSI,
-# so any non-ASCII literal here would silently mojibake. Japanese belongs in
-# SKILL.md / references, never in these scripts.
+# ASCII only in this file: Windows PowerShell 5.1 reads a BOM-less .ps1 as ANSI,
+# so a non-ASCII literal would silently mojibake. Scripts that must match Japanese
+# (resume-packet.ps1, loop-log.ps1) are saved as UTF-8 WITH BOM instead.
 
 Set-StrictMode -Version 1.0
 
