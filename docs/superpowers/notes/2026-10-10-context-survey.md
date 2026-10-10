@@ -181,6 +181,8 @@ canvas-generalization のセッション(圧縮 0 回)では、人間待ち等�
 - **`bin/resume-packet.ps1 -GoalDir`**: 固定順・決定論的に次を連結して出す(目安 10〜20KB)。
   state.md 全文 / goal-frame.md の「制約」「承認基準」「終了条件」節(原文)/ 否定リスト(policy.md から原文)/ 対象マイルストーン定義(goal-plan.md の該当節)/ assumptions.md の未検証行 / 直近の gate-decision・escalation の判定行 / 直近 retro の「次回変えること」/ 「待ち」の内容 / impl-runs・codex-runs の未完了ラベル(`.prompt` があって `.report` / `.exit` が無いもの)
 - **SessionStart フック**(plugin の hooks.json に追加): cwd のゴールループが active で `<goal-dir>/resume-pending` の印があれば、パケットを additionalContext として注入して印を消す(一回限り)。印は Opus が「state.md 更新 → 印 → /clear」の手順で置く。
+  - 安全策(cc-clear-handoff に倣う): 印は作業ディレクトリ単位で、古い印を別の作業で誤注入しないよう有効期限(例 24 時間)を持たせる。`compact` / `resume` 由来の SessionStart では発火させない(`/clear` と新規起動のみ)。印が無いときは、従来どおり起動時チェック 3(state.md を探して読む)で再開する。
+  - 注意: Agent ツールには呼び出し単位でツールを制限する引数が無い(2026-10-10 時点)。D のゲート Fable のツール制限は `agents/*.md` の `tools:` か `claude -p --tools ''` で行う。
 - **復唱**: 再開した Opus は最初の応答で「フェーズ / マイルストーン / 次のゲート / 待ち」をパケットから復唱する(起動時チェック 3 を強化)。各フェーズの入口でも state.md を再読する(Manus の recitation)。不一致は hook-log に記録(G に含める)。
 - **期待**: 平均文脈 49 万 → 10〜15 万。空白時のキャッシュ再作成 448 万 → ほぼ 0。精度は「残すものをスクリプトが決める」ので要約の取りこぼしが起きない。retro の「次回変えること」が毎回目に入るので、教訓の再発にも効く。
 
