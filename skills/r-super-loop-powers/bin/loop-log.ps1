@@ -102,7 +102,13 @@ if ($updates.Count -gt 0) {
     if ($null -eq $r) { Stop-Failed "state.md has no field 'updated'" '' }
     $newState = $r
     Write-TextFile $stateFile $newState
-    foreach ($key in $updates.Keys) { Write-Kv 'SET' ($key + ' = ' + $updates[$key]) }
+    # stdout stays ASCII: the console code page differs between Bash and PowerShell
+    # hosts, and the values are in the file anyway.
+    $setNames = @()
+    foreach ($p in $map.Keys) { if ($PSBoundParameters.ContainsKey($p)) { $setNames += $p } }
+    if ($Set) { $setNames += 'Set' }
+    if ($Clear) { $setNames += 'Clear' }
+    Write-Kv 'SET' (('{0} field(s): ' -f $updates.Count) + ($setNames -join ', '))
     Write-Kv 'UPDATED' $now
 }
 
@@ -117,7 +123,7 @@ if ($Who) {
     if (-not $logText) { $logText = "# call-log — $(Split-Path -Leaf $GoalDir)$nl$nl" }
     elseif (-not $logText.EndsWith("`n")) { $logText += $nl }
     Write-TextFile $logFile ($logText + $line + $nl)
-    Write-Kv 'LOGGED' $line
+    Write-Kv 'LOGGED' ("$now | $Who | $Phase")
 }
 
 # 3. marker -- only after a dry build proves the packet can be made from these files.

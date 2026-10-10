@@ -49,7 +49,8 @@ Check 'set-wait-with-equals' ($st -match '(?m)^- 待ち: 受け入れテスト�
 Check 'set-codex-run' ($st -match '(?m)^- codex-run: -$') $st
 Check 'set-updated' ($st -match '(?m)^- updated: \d{4}-\d{2}-\d{2} \d{2}:\d{2}$' -and -not $st.Contains('2026-10-10 10:00')) $st
 Check 'set-keeps-other-lines' ($st.StartsWith('# state — g1') -and $st.Contains('- skill-dir: C:\skill') -and $st.Contains('- 強度: MVP')) $st
-Check 'set-output' ($r.Out -match '(?m)^SET: 待ち = 受け入れ' -and $r.Out -match '(?m)^UPDATED: ') $r.Out
+Check 'set-output' ($r.Out -match '(?m)^SET: 4 field\(s\): SetPhase, SetMilestone, SetWait, Clear' -and $r.Out -match '(?m)^UPDATED: ') $r.Out
+Check 'stdout-ascii' (($r.Out -replace '[\x00-\x7F]', '') -eq '') 'stdout must stay ASCII (console code pages differ between hosts)'
 
 $r = Invoke-Log $g @('-SetIntensity', '高信頼', '-SetCheckpoint', '3-x', '-SetOwner', 'human', '-SetGate', 'none')
 $st = Get-Text (Join-Path $g 'state.md')
