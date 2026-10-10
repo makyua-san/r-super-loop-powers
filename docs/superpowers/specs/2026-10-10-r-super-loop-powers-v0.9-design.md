@@ -37,12 +37,12 @@ Opus メインセッションの文脈肥大(1セッション 87 万トークン
 | ID | 決定 | 内容 |
 |---|---|---|
 | D56 | 境界 | (a) 人間待ちに入るとき(state.md の「待ち」を書いた直後) (b) B-6 PASS の中間クローズ後 — **文脈が 20 万トークンを超えているとき**(D61 の通知が出ているとき)だけ (c) Checkpoint ACCEPT の確定処理後 (d) A-8 承認後。代理Fable が生きている A-1a〜A-4 の間は切らない(SendMessage の相手がセッションを跨げない) |
-| D57 | 再開パケット | `bin/resume-packet.ps1 -GoalDir <dir> [-OutFile <path>] [-PolicyFile <path>] [-MaxChars 9500]` が §3 の固定順で決定論的に組む。制約系の節(ピン留め)は削らず、後方の節だけ上限に収める。全文は `<goal-dir>/resume-packet.md` に書く。stdout には `PACKET:` / `CHARS:` / `TRUNCATED:` / `WARN:` の KV 行だけを出す |
+| D57 | 再開パケット | `bin/resume-packet.ps1 -GoalDir <dir> [-OutFile <path>] [-PolicyFile <path>] [-MaxChars 9500]` が §3 の固定順で決定論的に組む。全文(削らない)は常に `<goal-dir>/resume-packet.md` に書く。`-OutFile` を渡すと、制約系の節(ピン留め)は削らず後方の節だけ上限に収めた注入用の本文をそこに書く。stdout には `PACKET:` / `FULL_CHARS:` / `INJECT:` / `CHARS:` / `TRUNCATED:` / `WARN:` の KV 行だけを出す |
 | D58 | 印 | `<goal-dir>/resume-pending`(`created: <ISO 8601>` / `cwd: <対象プロジェクト>` の 2 行)。`bin/loop-log.ps1 -Mark` が置く(置く前に D57 を 1 回実行して組めることを確かめる)。有効期限 24 時間。一回限り(注入したら消す) |
 | D59 | 注入フック | `hooks/resume-inject.ps1` を SessionStart(matcher `startup\|clear`、timeout 30)に登録。`cwd` 配下の `docs/r-super-loop-powers/*/resume-pending` を探し、有効なら D57 でパケットを**その時点で**組み直して `hookSpecificOutput.additionalContext` に出し、印を消す。印が複数なら `created` が最新のもの 1 つ。期限切れの印は消して `STALE` を記録。組めなかったときは印を `resume-pending.failed` に改名して `ERROR` を記録し、何も出さない(フェイルオープン。従来の起動時チェック 3 で再開できる) |
 | D60 | 復唱と再読 | SKILL.md 起動時チェック 3 を強化: パケットが注入されていれば Glob で state.md を探さず、最初の応答で「フェーズ / 強度 / マイルストーン / 次のゲート / 待ち」をパケットの state.md から**そのまま**復唱してから手順に入る。各フェーズの入口(A-5・B-1・B-5・B-7・Learning)で state.md を再読する |
 | D61 | 文脈メーター | `hooks/context-meter.ps1` を PostToolUse(matcher `Agent`、timeout 10)に登録。ゴールループ中に、トランスクリプト末尾の assistant 行の `usage` から現在の文脈を求め、`hook-log.md` に `CTX` 行で記録する。**20 万トークン以上**なら `additionalContext` で 1 行通知する(D56 (b) の判断材料)。しきい値は環境変数 `RSLP_CTX_THRESHOLD` で上書き可(テスト用) |
-| D62 | 記帳の 1 ターン化 | `bin/loop-log.ps1 -GoalDir <dir> [-Who <役> -Purpose <目的> [-Phase <phase>]] [-Set '<key>=<value>' ...] [-Mark]`。call-log 追記(`-Who`)と state.md の欄更新(`-Set`。`updated:` は常に更新)と印(`-Mark`)を 1 回で行う。`-Phase` 省略時は state.md の phase。存在しない key を `-Set` されたら何も書かずに失敗する |
+| D62 | 記帳の 1 ターン化 | `bin/loop-log.ps1 -GoalDir <dir> [-Who <役> -Purpose <目的> [-Phase <phase>]] [-SetPhase <v>] [-SetIntensity <v>] [-SetMilestone <v>] [-SetCheckpoint <v>] [-SetOwner <v>] [-SetGate <v>] [-SetWait <v>] [-SetCodexRun <v>] [-Set '<key>=<value>'] [-Mark]`。call-log 追記(`-Who`)と state.md の欄更新(`-Set*`。欄が 1 つでも変わるとき `updated:` も更新)と印(`-Mark`)を 1 回で行う。`-Phase` 省略時は state.md の phase(更新前の値)。存在しない欄を指定されたら何も書かずに失敗する。欄ごとの名前付きパラメータにしたのは、`-File` 起動では配列パラメータに複数の値を渡せない(実測 2026-10-10)ため |
 | D63 | impl-check の前後処理 | `impl-check.ps1 -Prepare -Label <l> -GoalDir <dir> -WorkDir <repo>`: `impl-runs/<l>.base.txt`(HEAD)と `<l>.pre.txt`(スナップショット)を 1 回で書く。同じラベルの `.report.md` があれば拒否。`impl-check.ps1 -SaveReport -Label <l> -GoalDir <dir> -WorkDir <repo>`: 実装役の最終メッセージを **stdin** で受けて `<l>.report.md` に保存し、`.base.txt` / `.pre.txt` をラベルから引いてそのまま判定する(従来の `-ReportFile -BaseRef -PreexistingFile` も残す) |
 | D64 | 委譲プロンプトの重複排除 | 実装役の禁止領域 `docs/r-super-loop-powers/` に**読み取りだけ**の例外を 2 つ設ける: `impl-runs/*.prompt.md` と `tech-assessment.md`。初回委譲: Opus は `<l>.prompt.md` を書き、Agent の prompt には**そのファイルのパスと 3 行の指示**だけを渡す(本文を二度書かない)。再委譲: `<l>-2.prompt.md` には `## 再委譲の差分`(impl-check の `REASON` / `CRITERION_UNMET` / `WARN` の引用)と初回 prompt のパスだけを書く。M 節の原文貼付は初回の `.prompt.md` の中で現状どおり行う |
 | D65 | 積み荷を薄くする | SKILL.md を 3 つに分ける: `SKILL.md`(共通: 起動時チェック・ディレクトリ契約・state.md・フェーズ表・記帳・ゲート保護・Fable 共通契約・境界リセット・例外)/ `references/workflow-a.md`(A-0〜A-8 + 技術PM共通契約)/ `references/workflow-b.md`(B-1〜B-10 + Learning)。state.md の phase が goal-definition なら A、それ以外なら B を読む。起動時に読むのは SKILL.md と policy.md だけ。`references/roles.md` は Fable 依頼文を組むときに該当節だけ読む(Opus 自身の憲章の要点は SKILL.md に 3 行で置く) |
@@ -83,8 +83,8 @@ Opus メインセッションの文脈肥大(1セッション 87 万トークン
 1. `source` が `startup` / `clear` 以外なら何もしない(hooks.json の matcher が一次防御、ここは二次)。stdin が読めない・JSON でないときも何もしない。
 2. `cwd` 配下の `docs/r-super-loop-powers/*/resume-pending` を集める。無ければ終了。
 3. 各印の `created:` を読む(読めなければファイルの更新時刻)。24 時間より古い印は削除して `hook-log.md` に `STALE` を記録する。残った印のうち `created` が最新の 1 つを採る。
-4. `$PSScriptRoot\..\skills\r-super-loop-powers\bin\resume-packet.ps1 -GoalDir <dir> -OutFile <goal-dir>\resume-packet.md` を子 PowerShell で実行する(policy.md は同じスキルディレクトリのもの)。失敗(非 0 終了・ファイルが空)なら印を `resume-pending.failed` に改名し、`ERROR` を記録して終了。
-5. `resume-packet.md` を読み、`-MaxChars` を超えていれば先頭 `MaxChars` 文字に切る(通常は resume-packet.ps1 側で収まっている)。JSON にして UTF-8 で stdout に出す。印を削除し、`RESUME` を記録する。
+4. `$PSScriptRoot\..\skills\r-super-loop-powers\bin\resume-packet.ps1 -GoalDir <dir> -OutFile <一時ファイル> -MaxChars 9500` を子 PowerShell で実行する(policy.md は同じスキルディレクトリのもの。全文は同時に `<goal-dir>\resume-packet.md` に書かれる)。失敗(非 0 終了・ファイルが空)なら印を `resume-pending.failed` に改名し、`ERROR` を記録して終了。
+5. 一時ファイル(注入用に収めたもの)を読み、念のため `MaxChars` を超えていれば先頭 `MaxChars` 文字に切る。JSON にして UTF-8 で stdout に出す。印を削除し、`RESUME` を記録する。
 
 `hook-log.md` の行書式(v0.8 と同じ 4 欄): `YYYY-MM-DD HH:MM | RESUME|STALE|ERROR | source=<source> | <補足: chars=N / 理由>`。
 
@@ -105,12 +105,16 @@ Opus メインセッションの文脈肥大(1セッション 87 万トークン
 ### 6-1. loop-log.ps1
 
 ```
-loop-log.ps1 -GoalDir <dir> [-Who fable|codex-techpm|codex-review|codex-grareco|sonnet-builder -Purpose <text> [-Phase <phase>]] [-Set 'key=value']... [-Mark]
+loop-log.ps1 -GoalDir <dir>
+  [-Who fable|codex-techpm|codex-review|codex-grareco|sonnet-builder -Purpose <text> [-Phase <phase>]]
+  [-SetPhase <v>] [-SetIntensity <v>] [-SetMilestone <v>] [-SetCheckpoint <v>] [-SetOwner <v>] [-SetGate <v>] [-SetWait <v>] [-SetCodexRun <v>]
+  [-Set 'key=value']
+  [-Mark]
 ```
 
-- `-Who` があれば `call-log.md` に `YYYY-MM-DD HH:MM | <who> | <phase> | <purpose>` を追記する(`-Phase` 省略時は state.md の `phase:` の値)。
-- `-Set` は state.md の `- <key>: ...` 行の値を置き換える(`key` は `- ` と `:` の間の文字列と完全一致。`待ち` のような日本語キーも可)。1 つでも見つからなければ何も書かずに `STATUS: FAILED` / `REASON:` で非 0 終了。`-Set` が 1 つでもあれば `updated:` を現在時刻(`YYYY-MM-DD HH:MM`)にする。
-- `-Mark` は `resume-packet.ps1 -GoalDir <dir> -OutFile <goal-dir>\resume-packet.md` を実行して組めることを確かめてから `resume-pending` を書く。組めなければ印を置かずに非 0 終了。
+- `-Who` があれば `call-log.md` に `YYYY-MM-DD HH:MM | <who> | <phase> | <purpose>` を追記する(`-Phase` 省略時は state.md の `phase:` の値。同じ呼び出しで `-SetPhase` を渡しても、ログの phase は更新前の値 = その呼び出しが起きたフェーズ)。call-log.md が無ければ見出し付きで作る。
+- `-Set*` は state.md の `- <欄>: ...` 行の値を置き換える。対応: `-SetPhase`→`phase` / `-SetIntensity`→`強度` / `-SetMilestone`→`milestone` / `-SetCheckpoint`→`次のCheckpoint` / `-SetOwner`→`担当` / `-SetGate`→`次のゲート` / `-SetWait`→`待ち` / `-SetCodexRun`→`codex-run`。それ以外の欄は `-Set 'key=value'`(1 つ。最初の `=` で分ける)。1 つでも見つからなければ何も書かずに `STATUS: FAILED` / `REASON:` で非 0 終了。欄が 1 つでも変わるとき `updated:` を現在時刻(`YYYY-MM-DD HH:MM`)にする。
+- `-Mark` は `resume-packet.ps1 -GoalDir <dir>`(全文を `<goal-dir>\resume-packet.md` に書く)を実行して組めることを確かめてから `resume-pending` を書く。組めなければ印を置かずに非 0 終了。
 - `-Who` / `-Set` / `-Mark` のどれも無ければ引数エラー。
 - 出力: `LOGGED: <行>` / `SET: <key>` / `UPDATED: <時刻>` / `MARKED: <path>` / `STATUS: OK`。
 - 改行は元ファイルに合わせる(CRLF を含めば CRLF、無ければ LF)。UTF-8(BOM なし)で書く。
