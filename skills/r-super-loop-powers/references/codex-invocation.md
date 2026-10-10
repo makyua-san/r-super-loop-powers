@@ -42,7 +42,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-prefl
 `PREFLIGHT: OK` で終われば、以後の全呼び出しは `-EnvFile "<goal-dir>\codex-env.json"` だけを渡せばよい。
 `PREFLIGHT: FAILED` の場合は `REASON:` 行をそのままユーザーに伝えて**停止する**。特に:
 
-- `MODEL_PROBE: FAILED` → `gpt-6.1-sol` がこのアカウントで使えない。**黙って別モデルへ落とさない**。代替はユーザーが指名した場合のみ `-Model` で渡す。
+- `MODEL_PROBE: FAILED` → `gpt-6.1-sol` がこのアカウントで使えない。**黙って別モデルへ落とさない**。代替はユーザーが指名した場合のみ `-Model` で渡し、decisions.md に記録する(例: `not supported when using Codex with a ChatGPT account`)。
+- 既存ゴールの codex-env.json が v0.7 より前のもの(`envSchema` が無いか 2 未満、または `techpmModel` / `sandbox` 等の旧キーがある)なら、再開時にプリフライトを再実行する(`codex-run.ps1` が `WARN:` で知らせる)。モデル名は判定に使わない(ユーザーが指名した `-Model` は正当)。
 
 ### 2-2. 委譲する
 
