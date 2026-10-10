@@ -63,7 +63,7 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 | 技術PM | Codex `gpt-6.1-sol` / `max` / read-only(`-Role techpm`) | 実装責任者として、HOWに係るQAへ回答する(実装方式・技術選択・構成と分割・技術リスク・実現性・検証可能性)。MVPでは A-4末にマイルストーン別の**実装アセス**(`tech-assessment.md`)を出し、実装方式を1つに決め切る | MVPの代理ブレスト(A-2〜A-4)で、OpusがHOWの問いを束ねて呼び出す(1ラウンド=1回)+実装アセス1回。高信頼では人間が求めた場合のみ | コード変更・コミット。ユーザー価値・好み・優先順位の決定(`NEEDS_USER_VIEW:` で代理Fableへ返す)。設計承認 |
 | 実装役 | Sonnet 5.5(プラグイン同梱エージェント `r-super-loop-powers:builder`、`claude-sonnet-5-5`) | **実行者**。技術PMのアセス(高信頼では人間承認済みのplan)に従って、安全>安定>速度の順で実装し、検証し、自己検証報告(impl-report JSON)を返す | マイルストーン単位(MVP)またはタスク単位(高信頼)で呼び出し。Skill / Agent ツールを持たない | コミット、要件の再定義、否定リスト該当の自律判断。**設計・計画・選択肢提示のやり直し** |
 | 技術レビュー | Codex `gpt-6.1-sol` / `max` / read-only(`-Role reviewer`) | 実装に関与していない立場で、正しさ・アセスとの整合・技術リスク・検証の妥当性をレビューする(`TECH_REVIEW: OK / CONCERNS`) | **高信頼のB-5のみ** | 要件適合の判定(B-6のFableの仕事)、コード変更 |
-| 画像生成(Codex組み込み image_gen ツール) | Codex `gpt-6.1-sol` / `medium` / read-only(`-Role grareco`) | グラフィックレコード(生成のみ。保存はOpusが回収) | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)に呼び出し | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
+| 画像生成(Codex組み込み image_gen ツール) | Codex `gpt-6.1-sol` / `low` / read-only(`-Role grareco`) | グラフィックレコード(生成のみ。保存はOpusが回収) | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)に呼び出し | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
 
 各ロールの立場・受け渡し・決めること・決めないこと・判定のされ方は `references/roles.md`(ロール憲章)にまとめてある。各ロールへはその該当節を原文のまま配る(実装役: エージェント定義に埋め込み / codex: `codex-run.ps1` が差し込み / Fable: Opus が依頼文の冒頭に貼る)。この表と憲章が食い違う場合は、この表と SKILL.md が正。
 
