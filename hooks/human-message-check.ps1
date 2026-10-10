@@ -24,38 +24,12 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'hook-common.ps1')
 
 $JaRatioMin = 0.6
 $MinUnits = 20
 $JudgeTimeoutSec = 60
 $JudgeModel = 'haiku'
-$Utf8 = New-Object System.Text.UTF8Encoding($false)
-
-function Read-StdinUtf8 {
-    $reader = New-Object System.IO.StreamReader([Console]::OpenStandardInput(), $Utf8)
-    return $reader.ReadToEnd()
-}
-
-function Write-StdoutUtf8([string]$Text) {
-    $bytes = $Utf8.GetBytes($Text)
-    $out = [Console]::OpenStandardOutput()
-    $out.Write($bytes, 0, $bytes.Length)
-    $out.Flush()
-}
-
-# Newest state.md whose phase is not done; $null when the loop is not active here.
-# Real state files decorate the value ("- phase: **done**(2026-09-25)", "**完了(...)**"),
-# so only the leading word counts ("実装完了。…待ち" is still active).
-function Find-GoalDir([string]$Cwd) {
-    $root = Join-Path $Cwd 'docs\r-super-loop-powers'
-    if (-not (Test-Path -LiteralPath $root)) { return $null }
-    $states = @(Get-ChildItem -LiteralPath $root -Directory | ForEach-Object {
-            Get-Item -LiteralPath (Join-Path $_.FullName 'state.md') -ErrorAction SilentlyContinue })
-    $active = @($states | Where-Object {
-            $_ -and ([System.IO.File]::ReadAllText($_.FullName, $Utf8) -notmatch '(?m)^\s*-\s*phase:\s*\**\s*(done\b|完了)') })
-    if ($active.Count -eq 0) { return $null }
-    return ($active | Sort-Object LastWriteTime | Select-Object -Last 1).DirectoryName
-}
 
 function Get-ProseText([string]$Text) {
     # Fenced blocks (``` or ~~~), including one left open at the end of the reply.
@@ -131,15 +105,6 @@ function Invoke-Judge([string]$Prompt) {
     return ($m.Value | ConvertFrom-Json)
 }
 
-function Write-HookLog([string]$GoalDir, [string]$Result, [string]$Ratio, [string]$Note) {
-    try {
-        $one = ($Note -replace '[\r\n|]+', ' ').Trim()
-        if ($one.Length -gt 200) { $one = $one.Substring(0, 200) }
-        $line = '{0} | {1} | ja-ratio={2} | {3}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm'), $Result, $Ratio, $one
-        [System.IO.File]::AppendAllText((Join-Path $GoalDir 'hook-log.md'), $line + "`n", $Utf8)
-    } catch { }
-}
-
 function Send-Block([string]$Why) {
     # The template adds its own full stop after the reason.
     $Why = $Why.Trim().TrimEnd([char[]]@([char]0x3002, '.'))
@@ -166,7 +131,7 @@ try {
     $ratioText = '{0:0.00}' -f $stats.Ratio
     if ($stats.Units -ge $MinUnits -and $stats.Ratio -lt $JaRatioMin) {
         Send-Block "日本語で書かれていません(日本語の比率 $ratioText、基準 $JaRatioMin)。ユーザーが英語の文面そのものを求めた場合は、その文面はコードブロックに入れ、説明は日本語で書いてください"
-        Write-HookLog $goalDir 'BLOCK' $ratioText 'not japanese'
+        Write-HookLogLine $goalDir 'BLOCK' "ja-ratio=$ratioText" 'not japanese'
         exit 0
     }
     $template = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'judge-prompt.md'), $Utf8)
@@ -175,11 +140,11 @@ try {
         $why = [string]$verdict.reason
         if (-not $why.Trim()) { $why = '分かりにくい箇所があります' }
         Send-Block $why
-        Write-HookLog $goalDir 'BLOCK' $ratioText $why
+        Write-HookLogLine $goalDir 'BLOCK' "ja-ratio=$ratioText" $why
     } else {
-        Write-HookLog $goalDir 'PASS' $ratioText ''
+        Write-HookLogLine $goalDir 'PASS' "ja-ratio=$ratioText" ''
     }
 } catch {
-    Write-HookLog $goalDir 'ERROR' $ratioText $_.Exception.Message
+    Write-HookLogLine $goalDir 'ERROR' "ja-ratio=$ratioText" $_.Exception.Message
 }
 exit 0
