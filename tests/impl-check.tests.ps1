@@ -1,10 +1,13 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Plain-PowerShell tests for impl-check.ps1. Run:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tests\impl-check.tests.ps1
 $ErrorActionPreference = 'Continue'
 $script = Join-Path $PSScriptRoot '..\skills\r-super-loop-powers\bin\impl-check.ps1'
 $script:failures = 0
 $fence = '`' * 3
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = $utf8
+[Console]::OutputEncoding = $utf8
 
 function New-Repo {
     $d = Join-Path ([IO.Path]::GetTempPath()) ('implcheck-' + [guid]::NewGuid().ToString('N'))
@@ -168,6 +171,51 @@ $r = New-Repo; $b = Get-Head $r; Set-Change $r
 Assert-Status 'verification-unknown-outcome' (Invoke-Check $r (New-Report @{ verification = @(@{ command = 'x'; outcome = 'DONE'; evidence = '-' }) }) $b) 'INCOMPLETE'
 Assert-Status 'verification-missing-outcome' (Invoke-Check $r (New-Report @{ verification = @(@{ command = 'x'; evidence = '-' }) }) $b) 'INCOMPLETE'
 Assert-Status 'verification-pass-lowercase-ok' (Invoke-Check $r (New-Report @{ verification = @(@{ command = 'x'; outcome = 'pass'; evidence = '-' }) }) $b) 'OK'
+
+# v0.9: -Prepare writes base + pre in one call; -SaveReport takes the report on stdin.
+function Check([string]$Name, [bool]$Cond, [string]$Detail) {
+    if ($Cond) { Write-Output "PASS $Name" } else { Write-Output "FAIL $Name`n$Detail"; $script:failures++ }
+}
+function Invoke-Prepare($Repo, [string]$Goal, [string]$Label) {
+    $out = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script -Prepare -Label $Label -GoalDir $Goal -WorkDir $Repo 2>&1 | Out-String
+    return @{ Out = $out; Code = $LASTEXITCODE }
+}
+function Invoke-Save($Repo, [string]$Goal, [string]$Label, [string]$ReportText) {
+    $out = $ReportText | & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script -SaveReport -Label $Label -GoalDir $Goal -WorkDir $Repo 2>&1 | Out-String
+    return @{ Out = $out; Code = $LASTEXITCODE }
+}
+$r = New-Repo; $b = Get-Head $r
+$goal = Join-Path $r 'docs\r-super-loop-powers\g'
+New-Item -ItemType Directory -Path $goal -Force | Out-Null
+Set-Change $r 'old.txt'
+$p = Invoke-Prepare $r $goal 'm1-impl'
+Check 'prepare-ok' ($p.Code -eq 0 -and $p.Out -match '(?m)^STATUS: OK' -and $p.Out -match '(?m)^BASE_REF: [0-9a-f]{40}' -and $p.Out -match '(?m)^DIRTY_PATHS: 1') $p.Out
+Check 'prepare-base-file' (((Get-Content -Raw (Join-Path $goal 'impl-runs\m1-impl.base.txt')).Trim()) -eq $b) 'base.txt'
+Check 'prepare-pre-file' ((Get-Content -Raw (Join-Path $goal 'impl-runs\m1-impl.pre.txt')) -match "(?m)^old\.txt\t[0-9a-f]{40}") 'pre.txt'
+Set-Change $r 'new.txt'
+$report = New-Report @{ changed_files = @('new.txt'); summary = "日本語の要約 | with pipe`r`nsecond line" }
+$s = Invoke-Save $r $goal 'm1-impl' $report
+Check 'save-ok' ($s.Code -eq 0 -and $s.Out -match '(?m)^STATUS: OK' -and $s.Out -match '(?m)^SAVED: .*m1-impl\.report\.md') $s.Out
+$saved = [IO.File]::ReadAllText((Join-Path $goal 'impl-runs\m1-impl.report.md'), $utf8)
+Check 'save-verbatim' ($saved.TrimEnd() -eq $report.TrimEnd()) "saved:`n$saved"
+Check 'save-uses-prepare-files' ($s.Out -match '(?m)^PREEXISTING_UNCHANGED: old\.txt' -and $s.Out -match '(?m)^CHANGED_FILES_ACTUAL: new\.txt\s*$') $s.Out
+$p2 = Invoke-Prepare $r $goal 'm1-impl'
+Check 'prepare-refuses-label-reuse' ($p2.Code -ne 0 -and $p2.Out -match '(?m)^STATUS: REFUSED') $p2.Out
+$null = Invoke-Prepare $r $goal 'm1-impl-2'
+$s2 = Invoke-Save $r $goal 'm1-impl-2' 'not json at all'
+Check 'save-malformed-still-saved' ($s2.Code -ne 0 -and $s2.Out -match '(?m)^STATUS: MALFORMED' -and (Get-Content -Raw (Join-Path $goal 'impl-runs\m1-impl-2.report.md')) -match 'not json at all') $s2.Out
+$s3 = Invoke-Save $r $goal 'm9-impl' $report
+Check 'save-without-prepare' ($s3.Code -ne 0 -and $s3.Out -match '(?m)^STATUS: MALFORMED' -and $s3.Out -match 'no base ref' -and $s3.Out -match '(?m)^NEXT: .*-Prepare') $s3.Out
+$null = Invoke-Prepare $r $goal 'm1-impl-3'
+$s4 = Invoke-Save $r $goal 'm1-impl-3' ''
+Check 'save-empty-stdin' ($s4.Code -ne 0 -and $s4.Out -match '(?m)^STATUS: MALFORMED') $s4.Out
+$out = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script -Prepare -WorkDir $r 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0) { Write-Output 'PASS prepare-needs-label' } else { Write-Output "FAIL prepare-needs-label`n$out"; $script:failures++ }
+$empty = Join-Path ([IO.Path]::GetTempPath()) ('implcheck-empty-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $empty | Out-Null
+git -C $empty init -q 2>$null
+$p5 = Invoke-Prepare $empty (Join-Path $empty 'docs\r-super-loop-powers\g') 'm1-impl'
+Check 'prepare-needs-commit' ($p5.Code -ne 0) $p5.Out
 
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
 Write-Output 'ALL PASS'
