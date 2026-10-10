@@ -14,6 +14,13 @@
     Pass the file to the check as -PreexistingFile so that uncommitted work that
     was already there (earlier tasks of the same milestone) is not credited to,
     or blamed on, this run.
+
+  -Prepare -Label <l> -GoalDir <dir> -WorkDir <repo>
+    Before the delegation: writes impl-runs/<l>.base.txt (HEAD) and <l>.pre.txt
+    (the -Snapshot lines) in one call. Refuses a label that already has a report.
+  -SaveReport -Label <l> -GoalDir <dir> -WorkDir <repo>   (report text on stdin)
+    After the delegation: saves stdin verbatim as impl-runs/<l>.report.md, then
+    judges it with the base/pre files of that label.
 #>
 [CmdletBinding()]
 param(
@@ -27,7 +34,11 @@ param(
     # Snapshot written by -Snapshot before the delegation (impl-runs/<label>.pre.txt).
     [string]$PreexistingFile,
     [switch]$Snapshot,
-    [string]$OutFile
+    [string]$OutFile,
+    [switch]$Prepare,
+    [switch]$SaveReport,
+    [string]$Label,
+    [string]$GoalDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -93,6 +104,20 @@ function Test-Ignored([string]$RelPath) {
     return $false
 }
 
+function Get-SnapshotLines {
+    $lines = @()
+    foreach ($p in @(Get-DirtyPath)) { $lines += ($p + "`t" + (Get-PathFingerprint $p)) }
+    return $lines
+}
+
+function Write-SnapshotFile([string]$Path, [string[]]$Lines) {
+    $outDir = Split-Path -Parent $Path
+    if ($outDir -and -not (Test-Path -LiteralPath $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
+    $body = ''
+    if ($Lines.Count -gt 0) { $body = ($Lines -join "`n") + "`n" }
+    Write-TextFile $Path $body
+}
+
 if (-not (Test-Path -LiteralPath $WorkDir)) { throw "WorkDir does not exist: $WorkDir" }
 $WorkDir = (Resolve-Path -LiteralPath $WorkDir).Path
 
@@ -101,16 +126,59 @@ if ($Snapshot) {
     if (-not $OutFile) { throw '-Snapshot needs -OutFile <path> (impl-runs/<label>.pre.txt).' }
     $top = (@(Invoke-Git @('rev-parse', '--show-toplevel')) -join '').Trim()
     if (-not $top) { throw "WorkDir is not a git repository: $WorkDir" }
-    $lines = @()
-    foreach ($p in @(Get-DirtyPath)) { $lines += ($p + "`t" + (Get-PathFingerprint $p)) }
-    $outDir = Split-Path -Parent $OutFile
-    if ($outDir -and -not (Test-Path -LiteralPath $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
-    $body = ''
-    if ($lines.Count -gt 0) { $body = ($lines -join "`n") + "`n" }
-    Write-TextFile $OutFile $body
+    $lines = @(Get-SnapshotLines)
+    Write-SnapshotFile $OutFile $lines
     Write-Kv 'SNAPSHOT' $OutFile
     Write-Kv 'DIRTY_PATHS' $lines.Count
     exit 0
+}
+
+# --- prepare / save-report modes (label-based paths under <goal-dir>/impl-runs) -----
+if ($Prepare -or $SaveReport) {
+    if (-not $Label) { throw '-Prepare / -SaveReport need -Label <label>.' }
+    if (-not $GoalDir) { throw '-Prepare / -SaveReport need -GoalDir <goal-dir>.' }
+    if ($Label -notmatch '^[A-Za-z0-9._-]+$') { throw "Label must be [A-Za-z0-9._-]+ (got: $Label)" }
+    $implDir = Join-Path $GoalDir 'impl-runs'
+    $baseFile = Join-Path $implDir "$Label.base.txt"
+    $preFile = Join-Path $implDir "$Label.pre.txt"
+    $reportPath = Join-Path $implDir "$Label.report.md"
+}
+if ($Prepare) {
+    if (Test-Path -LiteralPath $reportPath) {
+        Write-Kv 'STATUS' 'REFUSED'
+        Write-Kv 'REASON' "label '$Label' already has a report: $reportPath"
+        Write-Kv 'NEXT' 'Use a new label (m<n>-impl-2, -3, ...); never reuse one.'
+        exit 1
+    }
+    $top = (@(Invoke-Git @('rev-parse', '--show-toplevel')) -join '').Trim()
+    if (-not $top) { throw "WorkDir is not a git repository: $WorkDir" }
+    # On an unborn branch git prints the literal "HEAD" to stdout, so test the shape.
+    $head = (@(Invoke-Git @('rev-parse', 'HEAD')) -join '').Trim()
+    if ($head -notmatch '^[0-9a-f]{40}$') { throw "WorkDir has no commit yet: $WorkDir (git init + first commit first; SKILL.md startup check 8)" }
+    # Snapshot before writing anything, so the files written here are not counted.
+    $lines = @(Get-SnapshotLines)
+    if (-not (Test-Path -LiteralPath $implDir)) { New-Item -ItemType Directory -Path $implDir -Force | Out-Null }
+    Write-TextFile $baseFile ($head + "`n")
+    Write-SnapshotFile $preFile $lines
+    Write-Kv 'BASE_REF' $head
+    Write-Kv 'SNAPSHOT' $preFile
+    Write-Kv 'DIRTY_PATHS' $lines.Count
+    Write-Kv 'STATUS' 'OK'
+    exit 0
+}
+if ($SaveReport) {
+    $reader = New-Object System.IO.StreamReader([Console]::OpenStandardInput(), (New-Object System.Text.UTF8Encoding($false)))
+    $stdinText = $reader.ReadToEnd()
+    if (-not (Test-Path -LiteralPath $implDir)) { New-Item -ItemType Directory -Path $implDir -Force | Out-Null }
+    Write-TextFile $reportPath $stdinText
+    Write-Kv 'SAVED' $reportPath
+    $ReportFile = $reportPath
+    if (-not (Test-Path -LiteralPath $baseFile)) {
+        Write-Kv 'REPORT_FILE' $ReportFile
+        Complete-Check 'MALFORMED' "no base ref for label '$Label' ($baseFile)" "Run impl-check.ps1 -Prepare -Label $Label before delegating; then judge again."
+    }
+    $BaseRef = (Read-TextFile $baseFile).Trim()
+    if (Test-Path -LiteralPath $preFile) { $PreexistingFile = $preFile }
 }
 
 if (-not $ReportFile) { throw '-ReportFile is required (or use -Snapshot -OutFile).' }

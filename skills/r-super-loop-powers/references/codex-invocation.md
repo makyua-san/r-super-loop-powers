@@ -42,7 +42,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-prefl
 `PREFLIGHT: OK` で終われば、以後の全呼び出しは `-EnvFile "<goal-dir>\codex-env.json"` だけを渡せばよい。
 `PREFLIGHT: FAILED` の場合は `REASON:` 行をそのままユーザーに伝えて**停止する**。特に:
 
-- `MODEL_PROBE: FAILED` → `gpt-6.1-sol` がこのアカウントで使えない。**黙って別モデルへ落とさない**。代替はユーザーが指名した場合のみ `-Model` で渡す。
+- `MODEL_PROBE: FAILED` → `gpt-6.1-sol` がこのアカウントで使えない。**黙って別モデルへ落とさない**。代替はユーザーが指名した場合のみ `-Model` で渡し、decisions.md に記録する(例: `not supported when using Codex with a ChatGPT account`)。
+- 既存ゴールの codex-env.json が v0.7 より前のもの(`envSchema` が無いか 2 未満、または `techpmModel` / `sandbox` 等の旧キーがある)なら、再開時にプリフライトを再実行する(`codex-run.ps1` が `WARN:` で知らせる)。モデル名は判定に使わない(ユーザーが指名した `-Model` は正当)。
 
 ### 2-2. 委譲する
 
@@ -60,7 +61,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-run.p
 すぐに戻る。`RUN: STARTED` と `NEXT:`(そのまま実行できる status コマンド)が出る。
 
 - `-Role` は必須で `techpm`(A-2〜A-4)/ `reviewer`(高信頼のB-5)/ `grareco`(Learning)。**すべて `-s read-only` 固定**で、サンドボックスを選ぶ引数は無い。モデルは codex-env.json の `model`(`gpt-6.1-sol`)。実行契約の後に役割別のロール指示が自動で入る。
-- effort の既定は techpm / reviewer = `max`、grareco = `medium`。通常は指定しない。
+- effort の既定は techpm / reviewer = `max`、grareco = `low`(v0.9。画像 1 枚の生成に高い effort は要らず、累計入力を抑える)。通常は指定しない。
+- タスク本文が 40 KB を超えると `WARN: prompt is N KB` が出る(止まらない)。hearing-log・spec・plan のような長い文書は貼らず、パスを渡して codex に読ませる(read-only で読める。全文貼りで 300 KB に達した実測がある)。
 - プラグインは既定で無効(`--disable plugins`)。組み込みのシステムスキル(imagegen 等)は残る。
 - `-Label` は委譲ごとに一意にする(`[A-Za-z0-9._-]+`)。同じラベルで実行中のものがあると起動を拒否する。
 - プロンプトの先頭には、**実行契約**(スコープ外禁止・コミット禁止・要件再定義禁止・否定リスト・最終メッセージが唯一の出力・**読み取り専用**)→ **ロール憲章**(`references/roles.md` の全体図+該当ロールの節。見つからなければ `WARN: roles section not found` を出して省く)→ **ロール指示** の順で自動で差し込まれ、その後にタスク本文が続く。

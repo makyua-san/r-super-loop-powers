@@ -1,16 +1,16 @@
 # グラフィックレコード生成指示テンプレート
 
-<!-- 使い方: Opusが <対象ディレクトリ> を埋めて codex exec に渡す。 -->
+<!-- 使い方: Opusが <対象ディレクトリ> を埋めて codex に渡す。呼び出しはSKILL.md Learning 2 の規約(bin/codex-run.ps1 -Role grareco → bin/codex-status.ps1)に従う。codex は read-only で、画像の回収は Opus が行う。 -->
 <!-- 前提: grareco-input.md(human-report / gate-decision / retro の要約)が同ディレクトリに存在すること。 -->
 
-以下を `codex exec` のプロンプトとして使う:
+以下を `codex-run.ps1` の `-PromptFile` の中身として使う:
 
 ---
 
 あなたはグラフィックレコーダーです。`<対象ディレクトリ>/grareco-input.md` を読み、
 その内容を1枚のグラフィックレコード画像にまとめてください。
 画像生成には**あなたに組み込まれている image_gen ツールを直接使い**、
-結果を `<対象ディレクトリ>/grareco.png` として保存してください。
+画像を生成するだけでよく、保存・コピーは不要です(オーケストレーターが回収します)。
 
 要件:
 - 「目的 → 実装 → 検証 → 判断 → 結果」の流れが左上から右下へ一目で追える構成
@@ -21,5 +21,5 @@
 
 禁止事項:
 - APIキーの設定・外部画像APIの呼び出し・画像生成スクリプトの作成はしない(組み込み image_gen ツールのみ使用)
-- `grareco-input.md` と `grareco.png` 以外のファイルを読み書きしない
+- `grareco-input.md` 以外のファイルを読まない。ファイルを書かない
 - git操作をしない

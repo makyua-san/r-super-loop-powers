@@ -29,7 +29,7 @@ param(
     # done by the Claude-side builder agent, so codex never needs to write.
     [Parameter(Mandatory = $true)][ValidateSet('techpm', 'reviewer', 'grareco')][string]$Role,
     [string]$Model,
-    # Empty = role default (techpm / reviewer: max, grareco: medium).
+    # Empty = role default (techpm / reviewer: max, grareco: low).
     [ValidateSet('', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra')][string]$Effort = '',
     [string[]]$AddDir = @(),
     [int]$TimeoutMinutes = 60,
@@ -118,18 +118,19 @@ the builder and you fix nothing.
 == END ROLE ==
 
 '@
-    # The built-in image_gen tool asks codex to open its own system skill
-    # (~/.codex/skills/.system/imagegen/SKILL.md) first. Contract item 1 forbids every
-    # SKILL.md, so without this exception the grareco run stops on the conflict and no
-    # image is made (lesson-search, 2026-10-01: two runs ended with no grareco.png).
+    # image_gen is a built-in tool. Its system skill (~/.codex/skills/.system/imagegen/
+    # SKILL.md) costs ~15 round trips per run when read first (survey 2026-10-10), so the
+    # brief says to call the tool directly; reading that one SKILL.md stays allowed only
+    # if the tool refuses to run without it (v0.8.1 lesson: two runs ended with no image).
     grareco = @'
 == ROLE: GRAPHIC RECORDER ==
-EXCEPTION to contract item 1, for this run only: you MAY read the built-in imagegen
-system skill's SKILL.md (under ~/.codex/skills/.system/imagegen/) in order to use your
-built-in image_gen tool. Nothing else under skills/, SKILL.md, ~/.codex/ or ~/.claude/.
-Read only the input file named in the task. Generate the image with image_gen and
-do not try to save or copy it anywhere -- the orchestrator collects it.
-If that SKILL.md cannot be read, do not stop: call image_gen directly anyway.
+Read only the input file named in the task. Generate the image with your built-in
+image_gen tool and do not try to save or copy it anywhere -- the orchestrator
+collects it.
+Do not read the imagegen system skill (SKILL.md under ~/.codex/skills/.system/imagegen/)
+first: call image_gen directly. EXCEPTION to contract item 1, only if the tool refuses
+to run without it: you MAY read that one SKILL.md. Nothing else under skills/,
+SKILL.md, ~/.codex/ or ~/.claude/.
 If you did not actually call image_gen (or it failed), your final message MUST
 start with "NO_IMAGE_GENERATED:" and the reason. Never say an image was made
 unless image_gen returned one; the orchestrator checks for the file.
@@ -230,7 +231,7 @@ if ($Label -notmatch '^[A-Za-z0-9._-]+$') { throw "Label must be [A-Za-z0-9._-]+
 # the Claude-side builder agent, so there is no write path here at all.
 $Sandbox = 'read-only'
 if (-not $Effort) {
-    if ($Role -eq 'grareco') { $Effort = 'medium' } else { $Effort = 'max' }
+    if ($Role -eq 'grareco') { $Effort = 'low' } else { $Effort = 'max' }
 }
 
 if (-not $RunDir) { $RunDir = Join-Path $WorkDir '.codex-runs' }
@@ -254,6 +255,12 @@ if (-not $rawPrompt.Trim()) { throw "PromptFile is empty: $PromptFile" }
 # Normalize to UTF-8 without BOM and prepend the contract. A BOM on stdin shows up
 # as a stray character in the first instruction.
 $warnings = @()
+# A 300 KB prompt was measured once (hearing-log + spec + plan pasted whole). codex is
+# read-only but can READ: pass documents by path instead of pasting them.
+$promptBytes = [System.Text.Encoding]::UTF8.GetByteCount($rawPrompt)
+if ($promptBytes -gt 40960) {
+    $warnings += ("prompt is {0} KB (> 40 KB); pass long documents by path and let codex read them." -f [int][Math]::Ceiling($promptBytes / 1024.0))
+}
 $normalizedPrompt = Join-Path $RunDir "$Label.prompt.txt"
 if ($NoPreamble) {
     Write-TextFile $normalizedPrompt $rawPrompt

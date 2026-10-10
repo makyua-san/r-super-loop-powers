@@ -17,10 +17,10 @@ function New-Env([hashtable]$Extra) {
 }
 $prompt = Join-Path $t 'p.md'; [IO.File]::WriteAllText($prompt, 'hello')
 
-function Invoke-Run([string]$EnvFile, [string]$Label, [string[]]$Extra) {
+function Invoke-Run([string]$EnvFile, [string]$Label, [string[]]$Extra, [string]$PromptPath = $prompt) {
     # -NonInteractive: a missing Mandatory -Role must fail, not prompt and hang.
     $args2 = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $run, '-EnvFile', $EnvFile, '-Label', $Label,
-        '-PromptFile', $prompt, '-WorkDir', $t, '-RunDir', (Join-Path $t 'runs')) + $Extra
+        '-PromptFile', $PromptPath, '-WorkDir', $t, '-RunDir', (Join-Path $t 'runs')) + $Extra
     $out = & powershell @args2 2>&1 | Out-String
     $code = $LASTEXITCODE
     $exit = Join-Path $t "runs\$Label.exit"
@@ -48,7 +48,7 @@ Check 'reviewer-brief' ((Get-Content -Raw (Join-Path $t 'runs\rv.prompt.txt')) -
 
 $r = Invoke-Run $env1 'gr' @('-Role', 'grareco')
 $m = Get-Meta 'gr'
-Check 'grareco-read-only-medium' ($r.Code -eq 0 -and $m.sandbox -eq 'read-only' -and $m.effort -eq 'medium') $r.Out
+Check 'grareco-read-only-low' ($r.Code -eq 0 -and $m.sandbox -eq 'read-only' -and $m.effort -eq 'low') $r.Out
 
 $r = Invoke-Run $env1 'bd' @('-Role', 'builder')
 Check 'builder-rejected' ($r.Code -ne 0) $r.Out
@@ -107,6 +107,15 @@ $runSrc = Get-Content -Raw $run
 Check 'worker-sets-codexhome' ($runSrc -match '\$env:CODEX_HOME\s*=\s*\$job\.codexHome') 'worker does not set CODEX_HOME from the job'
 $grPrompt = Get-Content -Raw (Join-Path $t 'runs\gr.prompt.txt')
 Check 'grareco-no-image-honest' ($grPrompt -match 'NO_IMAGE_GENERATED' -and $grPrompt -match 'call image_gen directly') 'grareco brief lacks the no-image rule'
+
+# v0.9 (F): long prompts warn; grareco calls image_gen without reading the imagegen skill first.
+$longPrompt = Join-Path $t 'long.md'
+[IO.File]::WriteAllText($longPrompt, ('x' * 41000))
+$r = Invoke-Run $env1 'lp' @('-Role', 'techpm') $longPrompt
+Check 'long-prompt-warns' ($r.Code -eq 0 -and $r.Out -match '(?m)^WARN: prompt is \d+ KB') $r.Out
+$r = Invoke-Run $env1 'sp' @('-Role', 'techpm')
+Check 'short-prompt-no-warn' ($r.Out -notmatch '(?m)^WARN: prompt is') $r.Out
+Check 'grareco-skips-skill-read' ($grPrompt -match 'Do not read the imagegen system skill' -and $grPrompt -match 'call image_gen directly' -and $grPrompt -match 'NO_IMAGE_GENERATED') 'grareco brief'
 
 Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
