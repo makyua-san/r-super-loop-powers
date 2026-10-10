@@ -21,7 +21,7 @@ Check 'skill-common-sections' ($s -match '(?m)^## 起動時チェック' -and $s
 Check 'skill-mentions-tools' ($s -match 'loop-log\.ps1' -and $s -match 'resume-packet\.ps1' -and $s -match 'resume-pending' -and $s -match 'context-meter\.ps1' -and $s -match '再開パケット') 'tool names'
 Check 'skill-recitation' ($s -match '復唱') 'recitation rule'
 Check 'skill-roles-jit' ($s -match 'roles\.md' -and $s -notmatch 'policy\.md` と `references/roles\.md`\(ロール憲章\)を読む') 'roles.md must be read just in time'
-Check 'skill-failures-only' ($s -match 'FAIL\|ALL PASS') 'shell results: failures only'
+Check 'skill-failures-only' ($s -match 'FAIL\\?\|ALL PASS') 'shell results: failures only'
 Check 'skill-no-image-read' ($s -match 'SendUserFile') 'image rule'
 # Step headings look like "**A-0 …**" or "**B-2〜B-3 …**": the number is followed by a space or 〜.
 foreach ($step in @('A-0', 'A-1a', 'A-1b', 'A-5', 'A-6', 'A-7', 'A-8')) {

@@ -52,7 +52,8 @@ $full = Get-Text (Join-Path $g 'resume-packet.md')
 $inj = Get-Text $inject
 Check 'full-and-inject-same-when-small' ($full -eq $inj) 'full and inject differ'
 Check 'title' ($full.StartsWith('# 再開パケット — g1')) $full.Substring(0, [Math]::Min(80, $full.Length))
-$heads = @('## 1. state.md', '## 2. 待ち', '## 3. 仮説自律の否定リスト', '## 4. 制約', '## 5. 対象マイルストーン', '## 6. 未検証の仮定', '## 7. 直近の判定', '## 8. 直近 retro', '## 9. 未完了の委譲')
+# Pinned sections (1-5) come first so that a hard cut by the host can only reach the cuttable ones.
+$heads = @('## 1. state.md', '## 2. 待ち', '## 3. 仮説自律の否定リスト', '## 4. 制約', '## 5. 未完了の委譲', '## 6. 対象マイルストーン', '## 7. 未検証の仮定', '## 8. 直近の判定', '## 9. 直近 retro')
 $idx = @(); foreach ($h in $heads) { $idx += $full.IndexOf($h) }
 $ordered = $true
 for ($i = 0; $i -lt $idx.Count; $i++) { if ($idx[$i] -lt 0 -or ($i -gt 0 -and $idx[$i] -lt $idx[$i - 1])) { $ordered = $false } }
@@ -88,7 +89,7 @@ Check 'missing-constraints-marked' ($full2.Contains('(見つからない: goal-f
 Check 'missing-plan-marked' ($full2.Contains('「## マイルストーン」が無い')) 'plan marker'
 Check 'missing-assumptions-marked' ($full2.Contains('(見つからない: assumptions.md')) 'assumptions marker'
 Check 'wait-none' ($full2 -match '(?m)^## 2\. 待ち\s*\n\s*\nなし') 'wait none'
-Check 'no-unfinished' ($full2 -match '(?m)^## 9\. 未完了の委譲\s*\n\s*\n\(なし\)') 'unfinished none'
+Check 'no-unfinished' ($full2 -match '(?m)^## 5\. 未完了の委譲\s*\n\s*\n\(なし\)') 'unfinished none'
 Check 'no-decision' ($full2.Contains('(判定はまだない)')) 'decision none'
 Check 'retro-from-sibling-goal' ($full2.Contains('- 教訓1')) 'newest retro of the project is used'
 

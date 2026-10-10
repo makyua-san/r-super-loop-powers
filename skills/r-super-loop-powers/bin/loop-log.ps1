@@ -131,8 +131,16 @@ if ($Mark) {
     $packet = Join-Path $PSScriptRoot 'resume-packet.ps1'
     $hostExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     if (-not (Test-Path -LiteralPath $hostExe)) { $hostExe = 'powershell' }
-    $out = & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $packet -GoalDir $GoalDir 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) { Stop-Failed ('resume packet could not be built: ' + $out.Trim()) 'fix the goal files (state.md must exist); no marker was written' }
+    # Build the injectable form too, so the hook's size warning shows up here, at mark time.
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('rslp-mark-' + [guid]::NewGuid().ToString('N') + '.md')
+    $out = & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $packet -GoalDir $GoalDir -OutFile $tmp -MaxChars 9500 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    if ($code -ne 0) { Stop-Failed ('resume packet could not be built: ' + $out.Trim()) 'fix the goal files (state.md must exist); no marker was written' }
+    foreach ($line in ($out -split "`r?`n")) {
+        if ($line -match '^CHARS: (\d+)') { Write-Kv 'INJECT_CHARS' $Matches[1] }
+        elseif ($line -match '^WARN: ') { Write-Output $line }
+    }
     $projectRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $GoalDir))
     $marker = Join-Path $GoalDir 'resume-pending'
     Write-TextFile $marker ('created: ' + (Get-Date).ToString('o') + "`ncwd: $projectRoot`n")

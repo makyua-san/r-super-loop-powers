@@ -39,7 +39,7 @@ Opus メインセッションの文脈肥大(1セッション 87 万トークン
 | D56 | 境界 | (a) 人間待ちに入るとき(state.md の「待ち」を書いた直後) (b) B-6 PASS の中間クローズ後 — **文脈が 20 万トークンを超えているとき**(D61 の通知が出ているとき)だけ (c) Checkpoint ACCEPT の確定処理後 (d) A-8 承認後。代理Fable が生きている A-1a〜A-4 の間は切らない(SendMessage の相手がセッションを跨げない) |
 | D57 | 再開パケット | `bin/resume-packet.ps1 -GoalDir <dir> [-OutFile <path>] [-PolicyFile <path>] [-MaxChars 9500]` が §3 の固定順で決定論的に組む。全文(削らない)は常に `<goal-dir>/resume-packet.md` に書く。`-OutFile` を渡すと、制約系の節(ピン留め)は削らず後方の節だけ上限に収めた注入用の本文をそこに書く。stdout には `PACKET:` / `FULL_CHARS:` / `INJECT:` / `CHARS:` / `TRUNCATED:` / `WARN:` の KV 行だけを出す |
 | D58 | 印 | `<goal-dir>/resume-pending`(`created: <ISO 8601>` / `cwd: <対象プロジェクト>` の 2 行)。`bin/loop-log.ps1 -Mark` が置く(置く前に D57 を 1 回実行して組めることを確かめる)。有効期限 24 時間。一回限り(注入したら消す) |
-| D59 | 注入フック | `hooks/resume-inject.ps1` を SessionStart(matcher `startup\|clear`、timeout 30)に登録。`cwd` 配下の `docs/r-super-loop-powers/*/resume-pending` を探し、有効なら D57 でパケットを**その時点で**組み直して `hookSpecificOutput.additionalContext` に出し、印を消す。印が複数なら `created` が最新のもの 1 つ。期限切れの印は消して `STALE` を記録。組めなかったときは印を `resume-pending.failed` に改名して `ERROR` を記録し、何も出さない(フェイルオープン。従来の起動時チェック 3 で再開できる) |
+| D59 | 注入フック | `hooks/resume-inject.ps1` を SessionStart(matcher `startup\|clear`、timeout 30)に登録。`cwd` 配下の `docs/r-super-loop-powers/*/resume-pending` を探し、有効なら D57 でパケットを**その時点で**組み直して `hookSpecificOutput.additionalContext` に出し、印を消す。印が複数なら `created` が最新のもの 1 つ。期限切れの印、および `cwd:` がセッションの cwd と一致しない(または無い)印は消して `STALE` を記録(clone・コピー・移動で持ち込まれた印を注入しない)。パケットはフック側で切らない(上限超過は `RESUME` に `over=1`)。組めなかったときは印を `resume-pending.failed` に改名して `ERROR` を記録し、何も出さない(フェイルオープン。従来の起動時チェック 3 で再開できる) |
 | D60 | 復唱と再読 | SKILL.md 起動時チェック 3 を強化: パケットが注入されていれば Glob で state.md を探さず、最初の応答で「フェーズ / 強度 / マイルストーン / 次のゲート / 待ち」をパケットの state.md から**そのまま**復唱してから手順に入る。各フェーズの入口(A-5・B-1・B-5・B-7・Learning)で state.md を再読する |
 | D61 | 文脈メーター | `hooks/context-meter.ps1` を PostToolUse(matcher `Agent`、timeout 10)に登録。ゴールループ中に、トランスクリプト末尾の assistant 行の `usage` から現在の文脈を求め、`hook-log.md` に `CTX` 行で記録する。**20 万トークン以上**なら `additionalContext` で 1 行通知する(D56 (b) の判断材料)。しきい値は環境変数 `RSLP_CTX_THRESHOLD` で上書き可(テスト用) |
 | D62 | 記帳の 1 ターン化 | `bin/loop-log.ps1 -GoalDir <dir> [-Who <役> -Purpose <目的> [-Phase <phase>]] [-SetPhase <v>] [-SetIntensity <v>] [-SetMilestone <v>] [-SetCheckpoint <v>] [-SetOwner <v>] [-SetGate <v>] [-SetWait <v>] [-SetCodexRun <v>] [-Set '<key>=<value>'] [-Mark]`。call-log 追記(`-Who`)と state.md の欄更新(`-Set*`。欄が 1 つでも変わるとき `updated:` も更新)と印(`-Mark`)を 1 回で行う。`-Phase` 省略時は state.md の phase(更新前の値)。存在しない欄を指定されたら何も書かずに失敗する。欄ごとの名前付きパラメータにしたのは、`-File` 起動では配列パラメータに複数の値を渡せない(実測 2026-10-10)ため |
@@ -65,13 +65,14 @@ Opus メインセッションの文脈肥大(1セッション 87 万トークン
 | 2 | 待ち | state.md の `- 待ち:` の値(`-` なら「なし」) | 不可 |
 | 3 | 仮説自律の否定リスト | policy.md の `## 仮説自律の否定リスト` 節(原文) | 不可 |
 | 4 | 制約・承認基準・終了条件 | goal-frame.md の `## 制約` / `## 承認基準` / `## 終了条件` の 3 節(見出しは前方一致。原文) | 不可 |
-| 5 | 対象マイルストーン | goal-plan.md の `## マイルストーン` 節(原文) | 可(上限 2,000 文字) |
-| 6 | 未検証の仮定 | assumptions.md の表のうち、最終列(状態)が `未検証` で始まる行。表の見出し 2 行を付ける | 可(上限 2,500 文字) |
-| 7 | 直近の判定 | 最新(更新時刻)の `goal-gate-decision.md` / `milestones/*/gate-decision*.md` の先頭 8 行と、最新の `milestones/*/escalation-*.md` の `7.` 行 | 可(上限 1,200 文字) |
-| 8 | 直近 retro の「次回変えること」 | `docs/r-super-loop-powers/*/milestones/*/retro.md` のうち最新 1 件の `## 次回変えること` 節(他ゴールの retro も対象。同じプロジェクトの教訓だから) | 可(上限 1,000 文字) |
-| 9 | 未完了の委譲 | `impl-runs/<l>.prompt.md` があって `<l>.report.md` が無いラベル / `codex-runs/<l>.prompt.md` があって `<l>.exit` が無いラベル / state.md の `codex-run:` | 不可 |
+| 5 | 未完了の委譲 | `impl-runs/<l>.prompt.md` があって `<l>.report.md` が無いラベル / `codex-runs/<l>.prompt.md` があって `<l>.exit` が無いラベル / state.md の `codex-run:` | 不可 |
+| 6 | 対象マイルストーン | goal-plan.md の `## マイルストーン` 節(原文) | 可(上限 2,000 文字) |
+| 7 | 未検証の仮定 | assumptions.md の表のうち、最終列(状態)が `未検証` で始まる行。表の見出し 2 行を付ける | 可(上限 2,500 文字) |
+| 8 | 直近の判定 | 最新(更新時刻)の `goal-gate-decision.md` / `milestones/*/gate-decision*.md` の先頭 8 行と、最新の `milestones/*/escalation-*.md` の `7.` 行 | 可(上限 1,200 文字) |
+| 9 | 直近 retro の「次回変えること」 | `docs/r-super-loop-powers/*/milestones/*/retro.md` のうち最新 1 件の `## 次回変えること` 節(他ゴールの retro も対象。同じプロジェクトの教訓だから) | 可(上限 1,000 文字) |
 
-- 上限超過は末尾を切り、`…(省略 N 文字。全文: <goal-dir>/resume-packet.md)` を付ける。全体が `-MaxChars`(既定 9,500)を超えるときは 8 → 7 → 6 → 5 の順に各 200 文字まで縮める。それでも超えるなら(ピン留めだけで超える)そのまま出して `WARN: packet exceeds <MaxChars> chars` を出す(Claude Code がファイルに退避し、プレビューの先頭には state.md が来る)。
+- ピン留めの節(1〜5)を先に置く。ホスト側で万一先頭から切られても、失われるのは切ってよい節だけになる(レビュー指摘で 9 番目にあった「未完了の委譲」を 5 番目へ移した)。
+- 上限超過は末尾を切り、`…(省略 N 文字。全文: <goal-dir>/resume-packet.md)` を付ける。全体が `-MaxChars`(既定 9,500)を超えるときは 9 → 8 → 7 → 6 の順に各 200 文字まで縮める。それでも超えるなら(ピン留めだけで超える)そのまま出して `WARN: packet exceeds <MaxChars> chars` を出す(Claude Code がファイルに退避し、プレビューの先頭には state.md が来る)。
 - 文字数は `.Length`(UTF-16 コード単位)。Claude Code の上限も文字数なので揃える。
 - 改行は LF。UTF-8(BOM なし)。
 - このスクリプトは日本語の見出しを探すので **UTF-8 BOM 付き**で保存する(PS 5.1 の規約。`tests/` で BOM を検査する)。
@@ -82,11 +83,11 @@ Opus メインセッションの文脈肥大(1セッション 87 万トークン
 
 1. `source` が `startup` / `clear` 以外なら何もしない(hooks.json の matcher が一次防御、ここは二次)。stdin が読めない・JSON でないときも何もしない。
 2. `cwd` 配下の `docs/r-super-loop-powers/*/resume-pending` を集める。無ければ終了。
-3. 各印の `created:` を読む(読めなければファイルの更新時刻)。24 時間より古い印は削除して `hook-log.md` に `STALE` を記録する。残った印のうち `created` が最新の 1 つを採る。
+3. 各印の `created:` を読む(読めなければファイルの更新時刻)。24 時間より古い印は削除して `hook-log.md` に `STALE` を記録する。印の `cwd:` を正規化(区切り記号・末尾の区切り・大文字小文字を無視)してセッションの `cwd` と比べ、一致しない・無い印も削除して `STALE | source=… | cwd mismatch: <値>` を記録する(clone・コピー・移動した checkout に入っていた印を、人間が何も打たないうちに注入しないため)。残った印のうち `created` が最新の 1 つを採る。
 4. `$PSScriptRoot\..\skills\r-super-loop-powers\bin\resume-packet.ps1 -GoalDir <dir> -OutFile <一時ファイル> -MaxChars 9500` を子 PowerShell で実行する(policy.md は同じスキルディレクトリのもの。全文は同時に `<goal-dir>\resume-packet.md` に書かれる)。失敗(非 0 終了・ファイルが空)なら印を `resume-pending.failed` に改名し、`ERROR` を記録して終了。
-5. 一時ファイル(注入用に収めたもの)を読み、念のため `MaxChars` を超えていれば先頭 `MaxChars` 文字に切る。JSON にして UTF-8 で stdout に出す。印を削除し、`RESUME` を記録する。
+5. 一時ファイル(注入用に収めたもの)を読み、JSON にして UTF-8 で stdout に出す。**フック側では切らない**(ピン留めの節が先頭にあり、ここで切ると制約が落ちる)。`MaxChars` を超えている場合は Claude Code がファイルに退避して先頭 2,000 文字(= state.md の冒頭)だけを見せるので、起動時チェック 3 の手順で `resume-packet.md` を読む。印を削除し、`RESUME` を記録する(超えていたときは補足に `over=1` を付ける)。
 
-`hook-log.md` の行書式(v0.8 と同じ 4 欄): `YYYY-MM-DD HH:MM | RESUME|STALE|ERROR | source=<source> | <補足: chars=N / 理由>`。
+`hook-log.md` の行書式(v0.8 と同じ 4 欄): `YYYY-MM-DD HH:MM | RESUME|STALE|ERROR | source=<source> | <補足: chars=N [over=1] / 理由>`。
 
 ## 5. `hooks/context-meter.ps1` — PostToolUse(Agent)フックの処理
 
@@ -114,9 +115,9 @@ loop-log.ps1 -GoalDir <dir>
 
 - `-Who` があれば `call-log.md` に `YYYY-MM-DD HH:MM | <who> | <phase> | <purpose>` を追記する(`-Phase` 省略時は state.md の `phase:` の値。同じ呼び出しで `-SetPhase` を渡しても、ログの phase は更新前の値 = その呼び出しが起きたフェーズ)。call-log.md が無ければ見出し付きで作る。
 - `-Set*` は state.md の `- <欄>: ...` 行の値を置き換える。対応: `-SetPhase`→`phase` / `-SetIntensity`→`強度` / `-SetMilestone`→`milestone` / `-SetCheckpoint`→`次のCheckpoint` / `-SetOwner`→`担当` / `-SetGate`→`次のゲート` / `-SetWait`→`待ち` / `-SetCodexRun`→`codex-run`。それ以外の欄は `-Set 'key=value'`(1 つ。最初の `=` で分ける)。欄を「なし(`-`)」に戻すときは `-Clear '待ち,codex-run'`(カンマ区切り)を使う(単独の `-` は `powershell -File` の起動引数として渡せず、powershell.exe が黙って終了する。実測 2026-10-10。空文字の値も `-` と扱う)。1 つでも見つからなければ何も書かずに `STATUS: FAILED` / `REASON:` で非 0 終了。欄が 1 つでも変わるとき `updated:` を現在時刻(`YYYY-MM-DD HH:MM`)にする。
-- `-Mark` は `resume-packet.ps1 -GoalDir <dir>`(全文を `<goal-dir>\resume-packet.md` に書く)を実行して組めることを確かめてから `resume-pending` を書く。組めなければ印を置かずに非 0 終了。
-- `-Who` / `-Set` / `-Mark` のどれも無ければ引数エラー。
-- 出力: `LOGGED: <行>` / `SET: <key>` / `UPDATED: <時刻>` / `MARKED: <path>` / `STATUS: OK`。
+- `-Mark` は `resume-packet.ps1 -GoalDir <dir> -OutFile <一時> -MaxChars 9500`(全文を `<goal-dir>\resume-packet.md` に書き、注入用の長さも計る)を実行して組めることを確かめてから `resume-pending` を書く。組めなければ印を置かずに非 0 終了。注入用の長さを `INJECT_CHARS:` で、上限超過なら `WARN:` をそのまま中継する。
+- `-Who` / `-Set*` / `-Mark` のどれも無ければ引数エラー。
+- 出力(ASCII のみ。コンソールのコードページが Bash ツールと PowerShell ツールで異なり、日本語を出すと化けるため): `LOGGED: <時刻> | <役> | <phase>` / `SET: <n> field(s): <パラメータ名…>` / `UPDATED: <時刻>` / `INJECT_CHARS: <n>` / `WARN: …` / `MARKED: <path>` / `STATUS: OK`。
 - 改行は元ファイルに合わせる(CRLF を含めば CRLF、無ければ LF)。UTF-8(BOM なし)で書く。
 - 日本語の引数は PowerShell ツール・Bash ツールのどちらから `powershell -File` で渡しても化けないことを実測済み(2026-10-10)。
 
@@ -185,6 +186,8 @@ SKILL.md(共通)の節: frontmatter / 冒頭 / 起動時チェック / ディレ
   - `source=startup` → 同上 / `source=compact` / `resume` → 出力なし・印は残る
   - 印なし → 出力なし / 期限切れ(`created` を 25 時間前に)→ 出力なし・印が消える・`STALE`
   - 印が 2 ゴールにある → `created` が新しい方だけ注入、古い方は残る
+  - 印の `cwd:` が別のディレクトリ / 無い → 出力なし・印が消える・`STALE | … | cwd mismatch`。大文字小文字・スラッシュ・末尾の区切りだけが違う `cwd:` は一致として注入
+  - ピン留めだけで 9,500 文字を超えるゴール → 切らずに注入(全ピン留め節が残る)・`RESUME | … | chars=N over=1`
   - state.md が無い(組めない)→ 出力なし・`resume-pending.failed` に改名・`ERROR`
   - 不正な stdin → exit 0・出力なし
   - hooks.json に SessionStart(matcher `startup|clear`、`resume-inject.ps1`、`CLAUDE_PLUGIN_ROOT`)と PostToolUse(matcher `Agent`、`context-meter.ps1`)がある
@@ -193,7 +196,7 @@ SKILL.md(共通)の節: frontmatter / 冒頭 / 起動時チェック / ディレ
   - しきい値以上(`RSLP_CTX_THRESHOLD` を小さく)→ `additionalContext` に「万トークン」と「境界リセット」を含む
   - usage 行が無い / transcript が無い / ループ外の cwd → 出力なし・exit 0
   - `RSLP_HOOK_CHILD=1` → 出力なし
-- `tests/loop-log.tests.ps1`(新規): call-log の行書式 / `-Phase` 省略時に state.md の phase / `-Set` の置換と `updated:` の更新 / 日本語キー(`待ち`)/ 未知のキーで失敗し state.md が変わらない / CRLF の state.md は CRLF のまま / `-Mark` で印が書かれ `created:` が ISO 8601 / state.md が無いと `-Mark` が失敗して印が無い / 引数なしで失敗
+- `tests/loop-log.tests.ps1`(新規): call-log の行書式 / `-Phase` 省略時に state.md の phase / `-Set` の置換と `updated:` の更新 / 日本語キー(`待ち`)/ 未知のキーで失敗し state.md が変わらない / CRLF の state.md は CRLF のまま / `-Mark` で印が書かれ `created:` が ISO 8601 / `INJECT_CHARS:` が出る / ピン留めだけで上限を超えるゴールでは `WARN:` が中継される / state.md が無いと `-Mark` が失敗して印が無い / 引数なしで失敗
 - `tests/impl-check.tests.ps1`(追加): `-Prepare` が base/pre を書く / 同ラベルの report があると `REFUSED` / `-SaveReport` が stdin から保存して `OK` / `MALFORMED` でもファイルは保存される / `.base.txt` 無しで `MALFORMED`
 - `tests/codex-run.tests.ps1`(変更・追加): `grareco-read-only-low` / 41 KB の本文で `WARN: prompt is` / 短い本文で WARN なし / grareco の brief に `Do not read` 相当と `NO_IMAGE_GENERATED` がある
 - `tests/skill-layout.tests.ps1`(新規): SKILL.md が 24 KB 以下 / `references/workflow-a.md` と `workflow-b.md` がある / A-0〜A-8 の見出しが workflow-a にだけ、B-1〜B-10 と Learning が workflow-b にだけある(SKILL.md に無い)/ SKILL.md が両ファイルと `loop-log.ps1` / `resume-packet.ps1` / `境界リセット` に言及する / `scripts/sync-templates.ps1 -Mode Verify` と `tests/roles-sync.tests.ps1` が通る

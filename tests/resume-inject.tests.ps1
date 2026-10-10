@@ -23,8 +23,9 @@ function Invoke-Hook([string]$Stdin) {
 function New-Input([string]$Source, [string]$Cwd) {
     return (@{ session_id = 's'; hook_event_name = 'SessionStart'; source = $Source; cwd = $Cwd } | ConvertTo-Json -Compress)
 }
-function Set-Marker([string]$Goal, [datetime]$Created) {
-    W (Join-Path $Goal 'resume-pending') ("created: " + $Created.ToString('o') + "`ncwd: x`n")
+function Set-Marker([string]$Goal, [datetime]$Created, [string]$Cwd = '') {
+    if (-not $Cwd) { $Cwd = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $Goal)) }
+    W (Join-Path $Goal 'resume-pending') ("created: " + $Created.ToString('o') + "`ncwd: $Cwd`n")
 }
 function Get-Context($Result) {
     try { $j = $Result.Out | ConvertFrom-Json } catch { return $null }
@@ -74,13 +75,40 @@ Check 'stale-removed' (-not (Test-Path -LiteralPath $m1)) 'stale marker kept'
 Check 'stale-logged' ((Get-Text (Join-Path $g1 'hook-log.md')) -match '\| STALE \| source=clear \|') (Get-Text (Join-Path $g1 'hook-log.md'))
 
 # A marker without "created:" falls back to its write time.
-W $m1 'x'
+W $m1 "cwd: $proj`n"
 (Get-Item -LiteralPath $m1).LastWriteTime = (Get-Date).AddHours(-30)
 $r = Invoke-Hook (New-Input 'clear' $proj)
 Check 'mtime-fallback-stale' ($r.Out -eq '' -and -not (Test-Path -LiteralPath $m1)) $r.Out
-W $m1 'x'
+W $m1 "cwd: $proj`n"
 $r = Invoke-Hook (New-Input 'clear' $proj)
 Check 'mtime-fallback-fresh' ((Get-Context $r) -and -not (Test-Path -LiteralPath $m1)) $r.Out
+
+# The marker's cwd must be this session's project: a marker that arrived with a clone,
+# a copy or a moved checkout is discarded, never injected.
+Set-Marker $g1 (Get-Date) 'C:\somewhere\else'
+$r = Invoke-Hook (New-Input 'clear' $proj)
+Check 'cwd-mismatch-silent' ($r.Code -eq 0 -and $r.Out -eq '') $r.Out
+Check 'cwd-mismatch-discarded' (-not (Test-Path -LiteralPath $m1)) 'marker kept'
+Check 'cwd-mismatch-logged' ((Get-Text (Join-Path $g1 'hook-log.md')) -match '\| STALE \| source=clear \| cwd mismatch') (Get-Text (Join-Path $g1 'hook-log.md'))
+W $m1 ("created: " + (Get-Date).ToString('o') + "`n")
+$r = Invoke-Hook (New-Input 'clear' $proj)
+Check 'cwd-missing-discarded' ($r.Out -eq '' -and -not (Test-Path -LiteralPath $m1)) $r.Out
+# Same directory spelled differently (case, trailing separator, forward slashes) still matches.
+Set-Marker $g1 (Get-Date) (($proj.ToUpperInvariant() -replace '\\', '/') + '/')
+$r = Invoke-Hook (New-Input 'clear' $proj)
+Check 'cwd-normalized-match' ((Get-Context $r) -and -not (Test-Path -LiteralPath $m1)) $r.Out
+
+# Over the host's 10,000-char cap: hand the packet over uncut (Claude Code files it and
+# shows a preview that starts with state.md); never cut pinned sections.
+$g4 = Join-Path $proj 'docs\r-super-loop-powers\g4'
+W (Join-Path $g4 'state.md') ($state -f 'g4')
+W (Join-Path $g4 'goal-frame.md') ("## 制約`n" + ('制' * 12000) + "`n`n## 承認基準`n1. PINNED-CRITERION`n`n## 終了条件`nPINNED-EXIT`n")
+W (Join-Path $g4 'impl-runs\m3-impl.prompt.md') 'p'
+Set-Marker $g4 (Get-Date)
+$r = Invoke-Hook (New-Input 'clear' $proj)
+$ctx = Get-Context $r
+Check 'overflow-not-cut' ($ctx -and $ctx.additionalContext.Length -gt 9500 -and $ctx.additionalContext -match 'PINNED-CRITERION' -and $ctx.additionalContext -match 'PINNED-EXIT' -and $ctx.additionalContext -match 'impl-runs/m3-impl' -and $ctx.additionalContext -match '## 9\. 直近 retro') $r.Out
+Check 'overflow-logged' ((Get-Text (Join-Path $g4 'hook-log.md')) -match '\| RESUME \| source=clear \| chars=\d+ over=1') (Get-Text (Join-Path $g4 'hook-log.md'))
 
 # Two goals: the newest marker wins, the other stays.
 Set-Marker $g2 ((Get-Date).AddHours(-2))

@@ -101,6 +101,14 @@ Check 'mark-ok' ($r.Code -eq 0 -and $r.Out -match '(?m)^MARKED: ' -and $r.Out -m
 Check 'mark-file' ((Test-Path -LiteralPath $marker) -and (Get-Text $marker) -match '(?m)^created: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}' -and (Get-Text $marker) -match ('(?m)^cwd: ' + [regex]::Escape($proj) + '\s*$')) (Get-Text $marker)
 Check 'mark-packet-built' (Test-Path -LiteralPath (Join-Path $g 'resume-packet.md')) 'resume-packet.md missing'
 Check 'mark-state-updated' ((Get-Text (Join-Path $g 'state.md')) -match '(?m)^- 待ち: 承認待ち$') 'state not updated with -Mark'
+Check 'mark-reports-inject-chars' ($r.Out -match '(?m)^INJECT_CHARS: \d+' -and $r.Out -notmatch '(?m)^WARN:') $r.Out
+
+# -Mark relays the packet builder's WARN when the pinned sections alone exceed the cap.
+$g5 = Join-Path $proj 'docs\r-super-loop-powers\g5'
+W (Join-Path $g5 'state.md') $stateLf
+W (Join-Path $g5 'goal-frame.md') ("## 制約`n" + ('制' * 12000) + "`n`n## 承認基準`n1. a`n`n## 終了条件`ne`n")
+$r = Invoke-Log $g5 @('-Mark')
+Check 'mark-relays-warn' ($r.Code -eq 0 -and $r.Out -match '(?m)^WARN: packet exceeds' -and $r.Out -match '(?m)^MARKED: ') $r.Out
 
 $g3 = Join-Path $proj 'docs\r-super-loop-powers\g3'
 New-Item -ItemType Directory -Path $g3 -Force | Out-Null

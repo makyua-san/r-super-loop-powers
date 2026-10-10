@@ -38,8 +38,9 @@ $slug = Split-Path -Leaf $GoalDir
 $loopRoot = Split-Path -Parent $GoalDir
 $fullFile = Join-Path $GoalDir 'resume-packet.md'
 
-# Caps (characters) for the sections that may be cut. Pinned sections have none.
-$Caps = @{ 5 = 2000; 6 = 2500; 7 = 1200; 8 = 1000 }
+# Caps (characters) for the sections that may be cut (6-9). Pinned sections (1-5) have
+# none and come first, so a hard cut by the host can only reach the cuttable ones.
+$Caps = @{ 6 = 2000; 7 = 2500; 8 = 1200; 9 = 1000 }
 $MinCap = 200
 
 function Get-Lines([string]$Text) { return ((($Text -replace "`r`n", "`n") -replace "`r", "`n") -split "`n") }
@@ -181,11 +182,11 @@ $sections = @(
     @{ N = 2; Title = '待ち'; Body = $wait; Pin = $true },
     @{ N = 3; Title = '仮説自律の否定リスト(policy.md 原文)'; Body = $neg; Pin = $true },
     @{ N = 4; Title = '制約・承認基準・終了条件(goal-frame.md 原文)'; Body = $frame; Pin = $true },
-    @{ N = 5; Title = '対象マイルストーン(goal-plan.md)'; Body = $ms; Pin = $false },
-    @{ N = 6; Title = '未検証の仮定(assumptions.md)'; Body = $asm; Pin = $false },
-    @{ N = 7; Title = '直近の判定'; Body = $dec; Pin = $false },
-    @{ N = 8; Title = '直近 retro の「次回変えること」'; Body = $retro; Pin = $false },
-    @{ N = 9; Title = '未完了の委譲'; Body = $unf; Pin = $true }
+    @{ N = 5; Title = '未完了の委譲'; Body = $unf; Pin = $true },
+    @{ N = 6; Title = '対象マイルストーン(goal-plan.md)'; Body = $ms; Pin = $false },
+    @{ N = 7; Title = '未検証の仮定(assumptions.md)'; Body = $asm; Pin = $false },
+    @{ N = 8; Title = '直近の判定'; Body = $dec; Pin = $false },
+    @{ N = 9; Title = '直近 retro の「次回変えること」'; Body = $retro; Pin = $false }
 )
 
 $header = @(
@@ -223,7 +224,7 @@ if ($OutFile) {
     foreach ($k in $Caps.Keys) { $limits[$k] = $Caps[$k] }
     $packet = Join-Packet $limits
     # Still too long: shrink the cuttable sections from the back, down to MinCap each.
-    foreach ($k in @(8, 7, 6, 5)) {
+    foreach ($k in @(9, 8, 7, 6)) {
         if ($packet.Text.Length -le $MaxChars) { break }
         $limits[$k] = $MinCap
         $packet = Join-Packet $limits
