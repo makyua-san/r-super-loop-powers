@@ -54,13 +54,32 @@ function Stop-Failed([string]$Status, [string]$Reason, [string]$Next) {
 function Invoke-Ps([string]$Script, [string[]]$ScriptArgs) {
     $hostExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     if (-not (Test-Path -LiteralPath $hostExe)) { $hostExe = 'powershell' }
-    $out = & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Script @ScriptArgs 2>&1 | Out-String
-    return @{ Out = $out; Code = $LASTEXITCODE }
+    # In PowerShell 5.1 a native command's stderr under 2>&1 becomes a NativeCommandError,
+    # which 'Stop' turns into a terminating error: the child's throw (stale codex-env.json,
+    # for one) would then kill this script before any STATUS line. Read it as text instead.
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = @(& $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Script @ScriptArgs 2>&1 | ForEach-Object { "$_" })
+        $code = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $saved }
+    return @{ Out = ($lines -join "`n"); Code = $code }
 }
 function Get-KvValue([string]$Text, [string]$Key) {
     $m = [regex]::Match($Text, '(?m)^' + [regex]::Escape($Key) + ': ?(.*)$')
     if ($m.Success) { return $m.Groups[1].Value.Trim() }
     return ''
+}
+function Test-CodexRunIsMine([string]$L) {
+    $state = Read-TextFile (Join-Path $GoalDir 'state.md')
+    return [bool]($state -match ('(?m)^\s*-\s*codex-run:\s*' + [regex]::Escape($L) + '\s*$'))
+}
+# -Async parks the label in state.md's codex-run:. Every terminal outcome releases it, or
+# the resume packet keeps listing a finished run as an unfinished delegation.
+function Clear-CodexRun([string]$L) {
+    if (-not (Test-CodexRunIsMine $L)) { return }
+    $lg = Invoke-Ps $logScript @('-GoalDir', $GoalDir, '-Clear', 'codex-run')
+    if ($lg.Code -ne 0) { Write-Kv 'WARN' ('state.md codex-run not cleared: ' + (Get-KvValue $lg.Out 'REASON')) }
 }
 # Body of "## <Name>" (optional number, trailing spaces tolerated) up to the next
 # "## " heading. $null when the heading is absent -- that is the INCOMPLETE signal.
@@ -113,6 +132,7 @@ function Complete-Run([string]$L) {
         $next = Get-KvValue $st.Out 'NEXT'
         if ($status -eq 'RUNNING' -or $status -eq 'STALLED') { $next = "scout.ps1 -GoalDir '$GoalDir' -Collect $L" }
         foreach ($k in @('REASON', 'ERROR', 'STDERR_TAIL')) { $v = Get-KvValue $st.Out $k; if ($v) { Write-Kv $k $v } }
+        if ($status -ne 'RUNNING' -and $status -ne 'STALLED') { Clear-CodexRun $L }
         Write-Kv 'LABEL' $L
         Write-Kv 'STATUS' $status
         Write-Kv 'NEXT' $next
@@ -128,6 +148,7 @@ function Complete-Run([string]$L) {
     if ($missing.Count -gt 0) {
         $raw = Join-Path $scoutDir "$L.raw.md"
         Write-TextFile $raw $body
+        Clear-CodexRun $L
         Write-Kv 'LABEL' $L
         Write-Kv 'RAW' $raw
         Stop-Failed 'INCOMPLETE' ('missing section: ' + ($missing -join ', ')) 'Re-run once with the same question; if it fails again, investigate yourself and log one codex-scout line (SKILL.md).'
@@ -169,8 +190,7 @@ function Complete-Run([string]$L) {
     }
 
     $logArgs = @('-GoalDir', $GoalDir, '-Who', 'codex-scout', '-Purpose', ($L + ': ' + (Limit-Text $question 80)))
-    $state = Read-TextFile (Join-Path $GoalDir 'state.md')
-    if ($state -match ('(?m)^\s*-\s*codex-run:\s*' + [regex]::Escape($L) + '\s*$')) { $logArgs += @('-Clear', 'codex-run') }
+    if (Test-CodexRunIsMine $L) { $logArgs += @('-Clear', 'codex-run') }
     $lg = Invoke-Ps $logScript $logArgs
     if ($lg.Code -ne 0) { Write-Kv 'WARN' ('call-log not written: ' + (Get-KvValue $lg.Out 'REASON')) }
 
@@ -239,6 +259,9 @@ $inside = ($GoalDir.TrimEnd('\') + '\').StartsWith($WorkDir.TrimEnd('\') + '\', 
 if (-not $inside) { $runArgs += @('-AddDir', $GoalDir) }
 $rr = Invoke-Ps $runScript $runArgs
 if ($rr.Code -ne 0 -or (Get-KvValue $rr.Out 'RUN') -ne 'STARTED') {
+    # Nothing was launched: do not leave a prompt that the resume packet would list as an
+    # unfinished delegation.
+    Remove-Item -LiteralPath $promptFile -Force -ErrorAction SilentlyContinue
     Write-Kv 'LABEL' $Label
     Stop-Failed 'FAILED' ('codex-run.ps1 did not start the run: ' + (Limit-Text $rr.Out 400)) 'fix the cause (references/codex-invocation.md) and re-run'
 }

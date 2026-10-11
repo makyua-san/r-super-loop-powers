@@ -30,6 +30,7 @@ $policyText = Get-Text (Join-Path $skillDir 'policy.md')
 Check 'policy-scout' ($policyText -match '\| スカウト \| Codex `gpt-6\.1-sol` / `medium` / read-only\(`-Role scout`\)' -and $policyText -match 'codex-scout') 'policy.md scout row / vocabulary'
 $invText = Get-Text (Join-Path $skillDir 'references\codex-invocation.md')
 Check 'invocation-scout' ($invText -match 'scout\.ps1' -and $invText -match '-Web') 'codex-invocation.md scout'
+Check 'invocation-four-scripts' ($invText -match '4本のスクリプト' -and $invText -notmatch '3本のスクリプト') 'codex-invocation.md still says three scripts'
 Check 'skill-roles-jit' ($s -match 'roles\.md' -and $s -notmatch 'policy\.md` と `references/roles\.md`\(ロール憲章\)を読む') 'roles.md must be read just in time'
 Check 'skill-failures-only' ($s -match 'FAIL\\?\|ALL PASS') 'shell results: failures only'
 Check 'skill-no-image-read' ($s -match 'SendUserFile') 'image rule'

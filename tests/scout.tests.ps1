@@ -179,6 +179,26 @@ $outside = Join-Path $t 'proj2'; New-Item -ItemType Directory -Path $outside -Fo
 $r = Invoke-Scout $g4 @('-WorkDir', $outside, '-Question', 'x', '-Label', 'scout-out', '-Async')
 $mOut = Get-Content -Raw (Join-Path $g4 'codex-runs\scout-out.meta.json') | ConvertFrom-Json
 Check 'launch-add-dir-outside' ((Get-Kv $r.Out 'STATUS') -eq 'STARTED' -and $mOut.command -match ('--add-dir ' + [regex]::Escape((ConvertTo-Arg $g4)))) $mOut.command
+# Review 2026-10-12 (Important 1): a stale codex-env.json (codex upgraded, preflight not
+# re-run) makes codex-run.ps1 throw; the launch failure must still come back as KV lines,
+# and the prompt written before the launch must not be left behind as an orphan.
+$g5 = New-Goal 'g5'
+$stale = [ordered]@{ kind = 'exe'; exe = (Join-Path $t 'missing-codex.exe'); version = '0.160.0'; model = 'gpt-6.1-sol'; envSchema = 2; skillDir = $skillDir; codexHome = $t }
+W (Join-Path $g5 'codex-env.json') ($stale | ConvertTo-Json)
+$r = Invoke-Scout $g5 @('-WorkDir', $t, '-Question', 'x', '-Async')
+Check 'launch-stale-env-fails-cleanly' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'FAILED' -and (Get-Kv $r.Out 'REASON') -match 'codex-preflight') $r.Out
+Check 'launch-failure-no-orphan-prompt' (-not (Test-Path -LiteralPath (Join-Path $g5 'codex-runs\scout-1.prompt.md')) -and -not (Test-Path -LiteralPath (Join-Path $g5 'codex-runs\scout-1.meta.json'))) 'orphan prompt/meta left after a failed launch'
+# Review 2026-10-12 (Important 2): a terminal non-OK collect must release codex-run: too.
+$g6 = New-Goal 'g6'
+New-FinishedRun $g6 'scout-2' "## 問い`nq`n`n## 結論`n- 何か`n" $false 'q'
+W (Join-Path $g6 'state.md') ($stateLf -replace '- codex-run: -', '- codex-run: scout-2')
+$r = Invoke-Scout $g6 @('-Collect', 'scout-2', '-WaitMinutes', '0')
+Check 'incomplete-clears-codex-run' ((Get-Kv $r.Out 'STATUS') -eq 'INCOMPLETE' -and (Get-Text (Join-Path $g6 'state.md')) -match '(?m)^- codex-run: -$') (Get-Text (Join-Path $g6 'state.md'))
+New-FinishedRun $g6 'scout-5' 'x' $false 'q5' 1
+W (Join-Path $g6 'state.md') ($stateLf -replace '- codex-run: -', '- codex-run: scout-5')
+$r = Invoke-Scout $g6 @('-Collect', 'scout-5', '-WaitMinutes', '0')
+Check 'failed-clears-codex-run' ((Get-Kv $r.Out 'STATUS') -eq 'FAILED' -and (Get-Text (Join-Path $g6 'state.md')) -match '(?m)^- codex-run: -$') (Get-Text (Join-Path $g6 'state.md'))
+Check 'failed-still-not-logged' (-not (Get-Text (Join-Path $g6 'call-log.md')).Contains('scout-5')) 'call-log has scout-5'
 # sync launch: where.exe exits non-zero quickly -> FAILED is relayed, nothing saved.
 $r = Invoke-Scout $g4 @('-WorkDir', $t, '-Question', 'sync', '-WaitMinutes', '1')
 Check 'sync-failed-relayed' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -match '^(FAILED|SUSPECT)$' -and -not (Test-Path -LiteralPath (Join-Path $g4 'scout\scout-3.md'))) $r.Out
