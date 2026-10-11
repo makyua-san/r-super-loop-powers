@@ -22,6 +22,14 @@ Check 'skill-points-to-workflows' ($s -match 'references/workflow-a\.md' -and $s
 Check 'skill-common-sections' ($s -match '(?m)^## 起動時チェック' -and $s -match '(?m)^## 記録ルール' -and $s -match '(?m)^## 境界リセット' -and $s -match '(?m)^## Fableサブエージェント共通契約' -and $s -match '(?m)^## 読むものと読まないもの') 'common sections'
 Check 'skill-mentions-tools' ($s -match 'loop-log\.ps1' -and $s -match 'resume-packet\.ps1' -and $s -match 'resume-pending' -and $s -match 'context-meter\.ps1' -and $s -match '再開パケット') 'tool names'
 Check 'skill-recitation' ($s -match '復唱') 'recitation rule'
+# v0.10: scout (codex investigation) rules live in SKILL.md, both workflows, policy and the invocation guide.
+Check 'skill-scout' ($s -match 'scout\.ps1' -and $s -match 'まずスカウト' -and $s -match '-Role techpm \| reviewer \| grareco \| scout') 'scout rules in SKILL.md'
+Check 'a-scout' ($a -match 'scout\.ps1') 'scout in workflow-a'
+Check 'b-scout' ($b -match 'scout\.ps1') 'scout in workflow-b'
+$policyText = Get-Text (Join-Path $skillDir 'policy.md')
+Check 'policy-scout' ($policyText -match '\| スカウト \| Codex `gpt-6\.1-sol` / `medium` / read-only\(`-Role scout`\)' -and $policyText -match 'codex-scout') 'policy.md scout row / vocabulary'
+$invText = Get-Text (Join-Path $skillDir 'references\codex-invocation.md')
+Check 'invocation-scout' ($invText -match 'scout\.ps1' -and $invText -match '-Web') 'codex-invocation.md scout'
 Check 'skill-roles-jit' ($s -match 'roles\.md' -and $s -notmatch 'policy\.md` と `references/roles\.md`\(ロール憲章\)を読む') 'roles.md must be read just in time'
 Check 'skill-failures-only' ($s -match 'FAIL\\?\|ALL PASS') 'shell results: failures only'
 Check 'skill-no-image-read' ($s -match 'SendUserFile') 'image rule'
@@ -45,7 +53,7 @@ Check 'boundary-list' ($s -match '人間待ち' -and $s -match 'B-6 PASS' -and $
 Check 'policy-grareco-low' ((Get-Text (Join-Path $skillDir 'policy.md')) -match '`low` / read-only\(`-Role grareco`\)') 'policy.md grareco effort'
 Check 'builder-read-exception' ((Get-Text (Join-Path $root 'agents\builder.md')) -match 'impl-runs/\*\.prompt\.md' -and (Get-Text (Join-Path $root 'agents\builder.md')) -match 'tech-assessment\.md') 'builder exception'
 $ver = ((Get-Text (Join-Path $root '.claude-plugin\plugin.json')) | ConvertFrom-Json).version
-Check 'version-0.9.0' ($ver -eq '0.9.0') "version=$ver"
+Check 'version-0.10.0' ($ver -eq '0.10.0') "version=$ver"
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\sync-templates.ps1') -Mode Verify | Out-Null
 Check 'templates-in-sync' ($LASTEXITCODE -eq 0) 'sync-templates Verify failed'
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\sync-roles.ps1') -Mode Verify | Out-Null

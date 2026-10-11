@@ -1,6 +1,6 @@
 # codex委譲 実行規約(Claude版)
 
-SKILL.md の起動時チェック・A-2〜A-4(技術PM)・B-5(高信頼の技術レビュー)・Learning(グラレコ)から参照される。**codex を呼ぶときは必ずこの規約に従う。** codex は3ロールすべて**読み取り専用**で、実装はしない(実装役は Sonnet サブエージェント。SKILL.md B-2)。
+SKILL.md の起動時チェック・A-2〜A-4(技術PM)・B-5(高信頼の技術レビュー)・Learning(グラレコ)から参照される。**codex を呼ぶときは必ずこの規約に従う。** codex は4ロール(techpm / reviewer / grareco / scout)すべて**読み取り専用**で、実装はしない(実装役は Sonnet サブエージェント。SKILL.md B-2)。
 
 このディレクトリの `bin/` にある3本のスクリプトが規約の実体である。**PowerShellを自分で組み立てて codex を直接叩かない。** 手書きの起動コマンドは、`< /dev/null` の欠落・POSIXパス・終了確認の省略といった失敗を毎回作り直すからである(下記「実測された失敗」参照)。
 
@@ -9,6 +9,7 @@ SKILL.md の起動時チェック・A-2〜A-4(技術PM)・B-5(高信頼の技術
 | `bin/codex-preflight.ps1` | codex実体の解決・バージョン・認証・モデル疎通を確認し `codex-env.json` を書く | ゴールごとに1回 |
 | `bin/codex-run.ps1` | 委譲を1件起動して**即座に戻る**(分離プロセスで走り続ける) | 委譲ごとに1回 |
 | `bin/codex-status.ps1` | その委譲が**実際にどうなったか**を機械的に判定する | 完了するまで繰り返し |
+| `bin/scout.ps1` | スカウト(調査)を起動から保存・記帳まで**1 回で**行うまとめ役(2-6)。scout ロールはこれ経由でだけ呼ぶ | 問いごとに 1 回 |
 
 ---
 
@@ -107,6 +108,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-statu
 
 プロセスツリーを落とし、exitファイルを書いて中断を記録する。
 
+### 2-6. スカウト(調査)— `bin/scout.ps1`
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\scout.ps1" `
+  -GoalDir "<goal-dir>" -WorkDir "<対象プロジェクトのルート>" `
+  -Question "<問い。長いときは -QuestionFile>" [-Web] [-Effort medium] [-WaitMinutes 9]
+```
+
+Bash ツールの `timeout` を 600000 にして呼ぶ。中で `codex-run.ps1 -Role scout` → `codex-status.ps1` → 型の検査 → `scout/<label>.md` と `scout/index.md` → `loop-log.ps1 -Who codex-scout` まで行う。読むのは標準出力の KV 行だけ:
+
+| 行 | 意味 |
+|---|---|
+| `STATUS: OK` | `REPORT:`(保存先)・`CONCLUSION:`(結論。最大 5 行)・`UNVERIFIED:`(未確認の件数)・`WEB:`(`used` / `not-requested` / `unavailable`)・`ELAPSED_MIN:` |
+| `STATUS: INCOMPLETE` | 報告に `## 結論` か `## 根拠` が無い。`RAW:` に本文。index には載らない。同じ問いで 1 回だけ再実行 |
+| `STATUS: RUNNING` / `STALLED` | 9 分で終わらなかった。`NEXT:` の `scout.ps1 -Collect <label>` で回収する |
+| それ以外(`FAILED` / `SUSPECT` / `LOST` …) | `codex-status.ps1` の判定をそのまま中継。保存も記帳もされていない。1 回だけ再実行し、再度失敗なら Opus が自分で調べて `loop-log.ps1 -Who codex-scout -Purpose "<label>: FAILED→Opus が代行"` と記帳する |
+
+- `-Async` で起動だけして `LABEL:` を受け取り(state.md の `codex-run:` に置かれる)、後で `-Collect <label>` で回収する。並行して何本も走らせるときに使う
+- `-List` で `scout/index.md` を出す。投げる前に同じ問いが無いか引く
+- `-Web`: codex の組み込み Web 検索を使わせる。codex 0.160.0 は **Web 検索が既定で有効**なので(スモークノート 2026-10-11 §1)、scout は `-Web` 無しで `web_search="disabled"`、ありで `web_search="live"` を `codex-run.ps1` が渡す(他ロールには何も渡さない)。read-only サンドボックスでも Web 検索は動く。報告の `## 未確認` が `WEB_UNAVAILABLE` なら `WEB: unavailable` が出るので、その Web 調査は Opus が行う
+- 根拠の無い結論は事実として扱わない。必要な根拠だけ `REPORT:` のファイルを Grep / 行範囲で見る(全文は読まない)
+
 ---
 
 ## 3. 既知の環境問題
@@ -127,6 +150,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-statu
 - **techpm**: SKILL.md「技術PM(Codex)共通契約」のプロンプト必須要素
 - **reviewer**: SKILL.md B-5(高信頼)に列挙した入力。特に委譲前の HEAD と各委譲の `impl-check.ps1` の `CHANGED_FILES_ACTUAL:` 行を渡し、`git diff <base>` と `git status --porcelain --untracked-files=all` で実際の変更を見させる(未追跡の新規ファイルは `git diff` に出ないので直接読ませる)
 - **grareco**: `templates/grareco-prompt.md`
+- **scout**: `scout.ps1` が問い・調べる範囲・報告の型を組む。Opus は問いだけ書く(何を知りたいか・どこを見ればよさそうか)
 
 ---
 

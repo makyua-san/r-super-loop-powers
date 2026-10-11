@@ -1,6 +1,6 @@
 ---
 name: r-super-loop-powers
-description: Use when starting or resuming a goal-engineering loop (ゴールループ / goal loop / ゴールエンジニアリング開発). Superpowersの上位で、要件適合性と未知低減を目的に、フェーズ管理・成果物契約・Fable承認ゲート・ヒューマン・イン・ザ・ループ配置・モデル責任分担(Opus 5.5実行 / Fable判定 / Codex gpt-6.1-sol技術PM・技術レビュー(読み取り専用) / Sonnet 5.5実装)をオーケストレーションする。MVPモードではFableヒアリングでゴールと文脈を掘り、HOWは代理ブレスト(Fable=ユーザー目線 / Codex技術PM=実装責任者目線)でAgentへ委任し、Checkpoint単位でHuman Acceptanceを行う。
+description: Use when starting or resuming a goal-engineering loop (ゴールループ / goal loop / ゴールエンジニアリング開発). Superpowersの上位で、要件適合性と未知低減を目的に、フェーズ管理・成果物契約・Fable承認ゲート・ヒューマン・イン・ザ・ループ配置・モデル責任分担(Opus 5.5実行 / Fable判定 / Codex gpt-6.1-sol技術PM・技術レビュー・スカウト(読み取り専用) / Sonnet 5.5実装)をオーケストレーションする。MVPモードではFableヒアリングでゴールと文脈を掘り、HOWは代理ブレスト(Fable=ユーザー目線 / Codex技術PM=実装責任者目線)でAgentへ委任し、Checkpoint単位でHuman Acceptanceを行う。
 ---
 
 # r-super-loop-powers — ゴールループ・オーケストレーター
@@ -8,7 +8,6 @@ description: Use when starting or resuming a goal-engineering loop (ゴールル
 あなた(このスキルを実行するモデル)は **Opus 5.5メインセッション** として、ゴールループの進行管理と成果物作成を担当する。
 このスキルは **責任・ゲート層** である: いまどのフェーズか、次に必要な成果物は何か、誰が実行し誰が判定するか、人間へ返すタイミングだけを制御する。
 作業の進め方(HOW)はSuperpowersのスキルに完全に委ね、その内部手順には一切干渉しない。MVPモードでは、Superpowersのスキルが人間に求める質問・承認への応答を**代理Fable**(ユーザー目線)と**技術PM**(Codex。実装責任者目線でHOWに係る問いに回答)が分担する。文脈は使い捨てにする: 正本はファイルで、境界ごとに `/clear` して再開パケットから続ける(「境界リセット」)。
-各担当(あなた自身を含む)の立場・決めること・決めないことは `references/roles.md`(ロール憲章)にまとめてある。
 
 Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(policy.md「上位原則」「MVPモードの原則」)。ループ・テスト・レビュー・承認は、AまたはBに寄与する場合にのみ実施する。ループ終了条件は回数ではなく「適合性への十分な確信 + 残存する重要な未知が許容可能」。
 
@@ -27,12 +26,11 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-preflight.ps1" -EnvOut "<goal-dir>\codex-env.json"
    ```
-   codex実体・バージョン・認証・モデル疎通を1回で確認する。codex は**技術PM・技術レビュー(高信頼)・グラレコの3ロールだけ**、**すべて `gpt-6.1-sol` の読み取り専用**で使う(実装はSonnetサブエージェント)。`PREFLIGHT: OK` なら `codex-env.json` のパスを state.md の `codex-env:` に記録する。`FAILED` なら `REASON:` をそのままユーザーへ提示して**停止する**(黙って別モデルへ落とさない。代替はユーザーが指名した場合のみ `-Model`)。旧 codex-env.json の扱いは `references/codex-invocation.md` 2-1。
+   codex実体・バージョン・認証・モデル疎通を1回で確認する。codex は**技術PM・技術レビュー(高信頼)・グラレコ・スカウトの4ロールだけ**、**すべて `gpt-6.1-sol` の読み取り専用**で使う。`PREFLIGHT: OK` なら `codex-env.json` のパスを state.md の `codex-env:` に記録する。`FAILED` なら `REASON:` をそのままユーザーへ提示して**停止する**(黙って別モデルへ落とさない。代替はユーザーが指名した場合のみ `-Model`)。旧 codex-env.json の扱いは `references/codex-invocation.md` 2-1。
 7. **実装役エージェントの確認**: Agentツールで使えるエージェント種別に `r-super-loop-powers:builder`(Sonnet 5.5)があることを確認する。無い場合(更新後に再起動していない等)はユーザーに報告して停止する。**汎用エージェントや `model: sonnet` 指定で実装を代行させない**。
 8. **対象プロジェクトの git 確認**: git リポジトリでない、またはコミットが1つも無い場合、`impl-check.ps1` は基準コミットが無いと実装役の変更を判定できない。そう説明して `git init` + 初回コミットを承認してもらう。**承認なしでワークフローBを開始しない。** Opus が自分の判断で `git init` やコミットをしない。
 9. **手順書の読込**: state.md の phase が `goal-definition`(または新規ゴール)なら `references/workflow-a.md` を、それ以外なら `references/workflow-b.md` を読む。**両方は読まない**(A-8 → B-1 の境では境界リセットの後に B を読む)。
 
-   ゴール開始前にチェック7・8を通さずにワークフローBへ進まない。
 
 ## ディレクトリ契約
 
@@ -50,11 +48,12 @@ docs/r-super-loop-powers/<goal-slug>/
 ├── goal-plan-submission.md  # A-5 Goal Plan承認用submission
 ├── goal-gate-decision.md    # A-6 Goal Gate判定
 ├── call-log.md              # 呼び出し記録(PL-007。loop-log.ps1 が追記)
-├── hook-log.md              # フックの記録(Stop: PASS/BLOCK/ERROR、再開注入: RESUME/STALE/ERROR、文脈メーター: CTX)
-├── resume-pending           # 境界リセットの印(loop-log.ps1 -Mark が置き、SessionStart フックが消す。24 時間で無効)
+├── hook-log.md              # フックの記録(PASS/BLOCK/ERROR・RESUME/STALE・CTX)
+├── resume-pending           # 境界リセットの印(-Mark が置き、SessionStart フックが消す)
 ├── resume-packet.md         # 直近の再開パケット全文(resume-packet.ps1 が書く)
 ├── codex-env.json           # 起動時チェック6のプリフライト結果
-├── codex-runs/              # codex(技術PM・技術レビュー・グラレコ)の実行記録
+├── codex-runs/              # codex 4 ロールの実行記録
+├── scout/                   # スカウトの報告(index.md / scout-<n>.md。scout.ps1 が書く)
 ├── impl-runs/               # 実装役への委譲記録(<ラベル>.prompt.md / .base.txt / .pre.txt / .report.md)
 └── milestones/<n>-<名前>/
     ├── submission.md / gate-decision.md / decisions.md
@@ -105,7 +104,7 @@ docs/r-super-loop-powers/<goal-slug>/
 
 ## 記録ルール(PL-007)と記帳スクリプト
 
-fable / codex-techpm / codex-review / codex-grareco / sonnet-builder を呼ぶたび、および代理Fableとの SendMessage 往復のたびに、直後に `call-log.md` へ 1 行追記する。追記・state.md の更新・再開の印は、すべて `bin/loop-log.ps1` で **1 回の呼び出し**にまとめる(手で `Add-Content` や Write をしない。記帳だけのターンを増やさない):
+fable / codex-techpm / codex-review / codex-grareco / codex-scout / sonnet-builder を呼ぶたび、および代理Fableとの SendMessage 往復のたびに、直後に `call-log.md` へ 1 行追記する。追記・state.md の更新・再開の印は、すべて `bin/loop-log.ps1` で **1 回の呼び出し**にまとめる(手で `Add-Content` や Write をしない。記帳だけのターンを増やさない):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps1" -GoalDir "<goal-dir>" `
@@ -118,6 +117,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 - `-Mark`: 境界リセットの印を置く(「境界リセット」)
 - `STATUS: OK` を確認する。`FAILED` のときは何も書かれていない(`REASON:` を見る)
 - 報告の転記は `impl-check.ps1 -SaveReport` / `codex-status.ps1` が担う(同じ内容を 2 度書かない)
+- スカウトは `scout.ps1` が成功時に記帳する。Opus が手で書くのは代行したときの 1 行だけ
 
 ## ゲート保護ルール(絶対)
 
@@ -128,9 +128,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 5. 実装役(Sonnet)にも codex にもコミットさせない
 6. 否定リストに触れる仮説を自律実行しない — エスカレーションまたは人間確認へ
 7. 代理ブレストに参加したFableインスタンスにゲート判定(A-6 / B-6)をさせない(自己承認の禁止)(SK-010)
-8. **成否は機械判定で決める。** codex は `codex-status.ps1`、実装役は `impl-check.ps1` の `STATUS: OK` 以外を成功として扱わない。プロセスが消えたこと・報告が返ったことは、いずれも単独では完了の証拠にならない。判定を目視や推測で代替しない
+8. **成否は機械判定で決める。** codex は `codex-status.ps1`、実装役は `impl-check.ps1` の `STATUS: OK` 以外を成功として扱わない。プロセスが消えたこと・報告が返ったことは、いずれも単独では完了の証拠にならない。判定を目視や推測で代替しない。グラレコとスカウトの失敗だけはループを止めない(代行して記帳する)
 9. codexの呼び出しは `bin/` のスクリプト経由でのみ行う。起動コマンドを自分で組み立てない。実装役は Agentツールの `r-super-loop-powers:builder` でのみ起動する
-10. codex は助言・レビュー・画像生成の**読み取り専用ロール**である。必ず `-Role techpm | reviewer | grareco` のいずれかで起動し(スクリプトが read-only を強制する)、コード変更・設計承認・要件適合の判定をさせない
+10. codex は助言・レビュー・画像生成の**読み取り専用ロール**である。必ず `-Role techpm | reviewer | grareco | scout` のいずれかで起動し(スクリプトが read-only を強制する)、コード変更・設計承認・要件適合の判定をさせない
 11. 実装役は実行者である。設計・計画・選択肢の提示をやり直させない。承認済みの技術アセス(高信頼は人間承認済みの plan)をプロンプトに入れずに委譲しない
 
 ## Fableサブエージェント共通契約
@@ -144,7 +144,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 
 ## 境界リセット(/clear と再開パケット)
 
-長い文脈は精度を落とし、コンパクションは制約を取りこぼす。このハーネスでは**正本はファイル、セッションは使い捨て**にする: 境界で state.md を更新し、印を置き、人間に `/clear` してもらう。`/clear` の直後に SessionStart フック(`hooks/resume-inject.ps1`)が `bin/resume-packet.ps1` で組んだ**再開パケット**(state.md 全文・待ち・否定リスト・goal-frame の制約/承認基準/終了条件・対象マイルストーン・未検証仮定・直近の判定と retro の「次回変えること」・未完了の委譲。要約なし)を会話の先頭に注入する。フックは `/` コマンドを起こせないので、`/clear` は人間が打つ。
+長い文脈は精度を落とし、コンパクションは制約を取りこぼす。このハーネスでは**正本はファイル、セッションは使い捨て**にする: 境界で state.md を更新し、印を置き、人間に `/clear` してもらう。`/clear` の直後に SessionStart フック(`hooks/resume-inject.ps1`)が `bin/resume-packet.ps1` で組んだ**再開パケット**(state.md 全文・制約系・未検証仮定・直近の判定・未完了の委譲。要約なし)を会話の先頭に注入する。フックは `/` コマンドを起こせないので、`/clear` は人間が打つ。
 
 **境界**(ここで切る):
 - (a) 人間の入力待ちに入るとき(「待ち」を書いた直後)
@@ -159,8 +159,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 3. `/clear` 後の最初の応答で、起動時チェック 3 の復唱を行う
 
 - 印は 24 時間で無効になる(その場合は従来どおり state.md から再開する)。印は `/clear` か新規起動でだけ使われ、`/compact` や `--resume` では使われない
-- パケットは 9,500 文字に収まるよう後方の節(マイルストーン・仮定・判定・retro)だけが切られ、全文は `<goal-dir>/resume-packet.md` にある。制約系の節は切られない(それだけで超えるときは切らずに渡す。`-Mark` の `WARN:` で分かる)
-- `/clear` されずに続いた場合もそのまま続行してよい(印は次の `/clear` で使われる)。フックの記録は `hook-log.md` の `RESUME` / `STALE` / `ERROR` / `CTX` 行
+- パケットは 9,500 文字に収まるよう後方の節だけが切られる(制約系は切らない)。全文は `<goal-dir>/resume-packet.md`
+- `/clear` されずに続いた場合もそのまま続行してよい(印は次の `/clear` で使われる)
 
 ## プラグインのフック
 
@@ -173,6 +173,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 | 起動時 | SKILL.md(これ)・policy.md・再開パケット(あれば)・phase に応じた `references/workflow-a.md` **または** `workflow-b.md` | roles.md 全文・両方の workflow |
 | Fable を呼ぶ直前 | roles.md の「全体図 (overview)」と該当ロールの節 | roles.md の他の節 |
 | codex を呼ぶとき | `references/codex-invocation.md`(初回) | — |
+| 調べもの(場所不明・3 ファイル超・Web) | **まずスカウト** `bin/scout.ps1`(timeout 600000。使い方は codex-invocation.md 2-6)。`CONCLUSION:` 行だけ使い、先に `-List` を引く | Opus 本体の Read / Grep の重ね掛け、調査用サブエージェント(Explore 等) |
 | 実装役の報告 | Agent の最終メッセージ(文脈に 1 回入る)→ `impl-check.ps1 -SaveReport` で保存と判定 | `.report.md` の読み直し |
 | 画像(スクショ・グラレコ) | 読まない。確認が要るなら Agent(model: sonnet)に見せて 5 行で返させる。人間に渡すなら SendUserFile かパス | Read ツールで画像を開く |
 | シェルの結果 | 失敗分だけ(テストは `… \| grep -E 'FAIL\|ALL PASS'` のように、`FAIL` / `FAILURES` / `ALL PASS` の行だけを出す)。切り詰めてよいが要約はしない | 全出力 |
@@ -182,6 +183,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 
 - どのフェーズでも、人間の入力が必要になったら「待ち」を書き、境界リセット(a)を行ってから停止する(代理Fable が生きている A-1a〜A-4 では「待ち」だけを書く)。
 - セッションが切れても、次回 `/r-super-loop-powers` 起動時に state.md(または再開パケット)から再開できる(NFR-04)。代理Fableのインスタンスはセッションを跨いで継続できないため、再開後に代理Fableが必要になった場合は、goal-seed / goal-frame / hearing-log を渡して新しい代理Fableを起動する(記録がある限り文脈は復元できる)。
-- **codex委譲はセッションを跨いで生き残る。** 再開時に state.md の `codex-run:` にラベルが残っていたら、まず `codex-status.ps1` でそのラベルを判定してから次の行動を決める(`LOST` なら何も完了していない、`OK` なら結果を回収できる)。判定せずに再委譲しない。
+- **codex委譲はセッションを跨いで生き残る。** 再開時に state.md の `codex-run:` にラベルが残っていたら、まず `codex-status.ps1` でそのラベルを判定してから次の行動を決める(`LOST` なら何も完了していない、`OK` なら結果を回収できる)。判定せずに再委譲しない。スカウトの未完了(`codex-run:` か「未完了の委譲」に出る)は `scout.ps1 -Collect <ラベル>` で回収する。
 - **実装役の委譲はセッションを跨がない。** 再開時に `impl-runs/<ラベル>.prompt.md` があって `.report.md` が無い委譲は、完了していない。`git status` を確認してから、新しいラベルで再委譲する(`-Prepare` を取り直す)。
 - このスキルは Superpowers・gstack等の他スキルのファイルを読むことはあっても、**変更してはならない**(SK-001)。
