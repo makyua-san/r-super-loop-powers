@@ -172,6 +172,13 @@ $r = Invoke-Scout $g4 @('-WorkDir', $t, '-Async')
 Check 'no-question-fails' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'FAILED') $r.Out
 $r = Invoke-Scout $g4 @('-Question', 'x', '-Async')
 Check 'no-workdir-fails' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'FAILED') $r.Out
+# Smoke 2026-10-12: a goal dir outside the working directory is unreadable under contract
+# item 1 unless it is added with --add-dir; inside the working directory nothing is added.
+Check 'launch-no-add-dir-inside' ($m1.command -notmatch '--add-dir') $m1.command
+$outside = Join-Path $t 'proj2'; New-Item -ItemType Directory -Path $outside -Force | Out-Null
+$r = Invoke-Scout $g4 @('-WorkDir', $outside, '-Question', 'x', '-Label', 'scout-out', '-Async')
+$mOut = Get-Content -Raw (Join-Path $g4 'codex-runs\scout-out.meta.json') | ConvertFrom-Json
+Check 'launch-add-dir-outside' ((Get-Kv $r.Out 'STATUS') -eq 'STARTED' -and $mOut.command -match ('--add-dir ' + [regex]::Escape((ConvertTo-Arg $g4)))) $mOut.command
 # sync launch: where.exe exits non-zero quickly -> FAILED is relayed, nothing saved.
 $r = Invoke-Scout $g4 @('-WorkDir', $t, '-Question', 'sync', '-WaitMinutes', '1')
 Check 'sync-failed-relayed' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -match '^(FAILED|SUSPECT)$' -and -not (Test-Path -LiteralPath (Join-Path $g4 'scout\scout-3.md'))) $r.Out
@@ -185,6 +192,14 @@ $line9 = @(($idx4 -split "`n") | Where-Object { $_ -match '\| scout-9 \|' })
 Check 'index-one-line-long-question' ($line9.Count -eq 1 -and $line9[0].Length -le (40 + 120) -and $line9[0] -notmatch '\|\s*$') ($line9 -join '/')
 
 Check 'script-has-bom' ([IO.File]::ReadAllBytes($scout)[0] -eq 0xEF) 'scout.ps1 must be UTF-8 with BOM (Japanese literals)'
+
+# Smoke 2026-10-12: the orchestrator calls scout.ps1 from the Bash tool, whose console code
+# page is not UTF-8, and the Japanese CONCLUSION lines arrived garbled. The script must emit
+# UTF-8 bytes whatever code page the console has.
+$rawOut = Join-Path $t 'list-raw.txt'
+& cmd.exe /c "chcp 932 >nul & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""$scout"" -GoalDir ""$g1"" -List > ""$rawOut"" & chcp 65001 >nul"
+$rawText = [IO.File]::ReadAllText($rawOut, $utf8)
+Check 'stdout-utf8-under-cp932' ($rawText -match '\| scout-1 \| web:n \| どこで決まるか' -and $rawText -match '# scout index — g1') $rawText
 
 Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }

@@ -36,6 +36,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 . (Join-Path $PSScriptRoot 'codex-common.ps1')
+# The orchestrator calls this from the Bash tool, whose console code page is not UTF-8;
+# without this the Japanese CONCLUSION lines arrive garbled (smoke 2026-10-12). The
+# child scripts inherit the code page, so their output round-trips as UTF-8 too.
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 
 $runScript = Join-Path $PSScriptRoot 'codex-run.ps1'
 $statusScript = Join-Path $PSScriptRoot 'codex-status.ps1'
@@ -229,6 +233,10 @@ Write-TextFile $promptFile $prompt
 $runArgs = @('-EnvFile', $EnvFile, '-Label', $Label, '-PromptFile', $promptFile, '-WorkDir', $WorkDir, '-RunDir', $runDir, '-Role', 'scout')
 if ($Effort) { $runArgs += @('-Effort', $Effort) }
 if ($Web) { $runArgs += '-Web' }
+# Contract item 1 confines codex to the working directory. The goal documents normally
+# live inside it (docs/r-super-loop-powers/<goal>/); when they do not, add them.
+$inside = ($GoalDir.TrimEnd('\') + '\').StartsWith($WorkDir.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)
+if (-not $inside) { $runArgs += @('-AddDir', $GoalDir) }
 $rr = Invoke-Ps $runScript $runArgs
 if ($rr.Code -ne 0 -or (Get-KvValue $rr.Out 'RUN') -ne 'STARTED') {
     Write-Kv 'LABEL' $Label
