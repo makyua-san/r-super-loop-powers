@@ -27,10 +27,14 @@ param(
     [string]$RunDir,
     # Who codex is in this delegation. Every role is read-only: implementation is
     # done by the Claude-side builder agent, so codex never needs to write.
-    [Parameter(Mandatory = $true)][ValidateSet('techpm', 'reviewer', 'grareco')][string]$Role,
+    [Parameter(Mandatory = $true)][ValidateSet('techpm', 'reviewer', 'grareco', 'scout')][string]$Role,
     [string]$Model,
-    # Empty = role default (techpm / reviewer: max, grareco: low).
+    # Empty = role default (techpm / reviewer: max, grareco: low, scout: medium).
     [ValidateSet('', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra')][string]$Effort = '',
+    # Turn codex's built-in web search on for this run. codex 0.160.0 has it on by
+    # default (smoke note 2026-10-11), so the scout role turns it OFF unless -Web is
+    # given (a scout is repo-only by default); other roles are left as they were.
+    [switch]$Web,
     [string[]]$AddDir = @(),
     [int]$TimeoutMinutes = 60,
     [switch]$NoPreamble,
@@ -137,11 +141,34 @@ unless image_gen returned one; the orchestrator checks for the file.
 == END ROLE ==
 
 '@
+    scout = @'
+== ROLE: SCOUT (investigator, read-only) ==
+You answer ONE question by reading the working directory and the goal documents
+named in the task (and the web, only when the task says web search is allowed).
+You propose no design, judge no requirement, change no file, and do not invoke
+process skills (brainstorming, writing-plans or similar). When the answer is in
+the files, open them; do not answer from memory.
+Your final message MUST use exactly the four headings listed in the task, in that
+order: the question restated; the conclusion (at most 5 lines; "not found" plus
+where you looked is a valid conclusion); the evidence (one line per claim, each
+with file:line or a URL and the quoted text); what you could not verify.
+If web search was allowed but no web tool was available to you, write
+WEB_UNAVAILABLE as the first line of the last section. Never invent a file, a
+line number or a URL.
+== END ROLE ==
+
+'@
 }
 
 # Documented effort ladders: Sol and Luna stop at max (no "ultra"). Sending ultra
 # to them fails the run, so clamp here instead of burning a delegation.
 $NoUltraModels = @('gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-luna', 'gpt-5.6-luna')
+
+# The codex config key that controls the built-in web search. Measured on codex-cli
+# 0.160.0 (spec v0.10 F19, smoke note 2026-10-11 section 1): the top-level key is
+# live, "disabled" stops the web_search events, and the default is ON.
+$WebSearchOn = 'web_search="live"'
+$WebSearchOff = 'web_search="disabled"'
 
 # ============================================================================
 # Worker
@@ -231,7 +258,9 @@ if ($Label -notmatch '^[A-Za-z0-9._-]+$') { throw "Label must be [A-Za-z0-9._-]+
 # the Claude-side builder agent, so there is no write path here at all.
 $Sandbox = 'read-only'
 if (-not $Effort) {
-    if ($Role -eq 'grareco') { $Effort = 'low' } else { $Effort = 'max' }
+    if ($Role -eq 'grareco') { $Effort = 'low' }
+    elseif ($Role -eq 'scout') { $Effort = 'medium' }
+    else { $Effort = 'max' }
 }
 
 if (-not $RunDir) { $RunDir = Join-Path $WorkDir '.codex-runs' }
@@ -318,6 +347,11 @@ $codexArgs = $inv.Prefix + @(
     '-o', $lastFile
 )
 if ($Model) { $codexArgs += @('-m', $Model) }
+# -Web turns the search on explicitly; a scout without -Web is repo-only, so turn
+# it off. Any other role without -Web keeps codex's default (unchanged since v0.7).
+$webOn = $false
+if ($Web) { $codexArgs += @('-c', $WebSearchOn); $webOn = $true }
+elseif ($Role -eq 'scout') { $codexArgs += @('-c', $WebSearchOff) }
 # Measured: -c plugins."superpowers@...".enabled=false does NOT hide the skills;
 # only turning the plugins feature off does.
 if (-not $KeepPlugins) { $codexArgs += @('--disable', 'plugins') }
@@ -387,6 +421,7 @@ $meta = [ordered]@{
     model          = $Model
     effort         = $Effort
     sandbox        = $Sandbox
+    web            = $webOn
     codexHome      = $codexHome
     outputSchema   = ''
     timeoutMinutes = $TimeoutMinutes
@@ -407,6 +442,7 @@ Write-Kv 'ROLE' $Role
 Write-Kv 'MODEL' $Model
 Write-Kv 'EFFORT' $Effort
 Write-Kv 'SANDBOX' $Sandbox
+Write-Kv 'WEB' $(if ($webOn) { 'on' } else { 'off' })
 foreach ($w in $warnings) { Write-Kv 'WARN' $w }
 Write-Kv 'TIMEOUT_MIN' $TimeoutMinutes
 Write-Kv 'NEXT' ("powershell -NoProfile -File '{0}\codex-status.ps1' -RunDir '{1}' -Label '{2}' -WaitMinutes 9" -f $PSScriptRoot, $RunDir, $Label)
