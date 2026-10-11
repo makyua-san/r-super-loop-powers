@@ -64,6 +64,7 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 | 実装役 | Sonnet 5.5(プラグイン同梱エージェント `r-super-loop-powers:builder`、`claude-sonnet-5-5`) | **実行者**。技術PMのアセス(高信頼では人間承認済みのplan)に従って、安全>安定>速度の順で実装し、検証し、自己検証報告(impl-report JSON)を返す | マイルストーン単位(MVP)またはタスク単位(高信頼)で呼び出し。Skill / Agent ツールを持たない | コミット、要件の再定義、否定リスト該当の自律判断。**設計・計画・選択肢提示のやり直し** |
 | 技術レビュー | Codex `gpt-6.1-sol` / `max` / read-only(`-Role reviewer`) | 実装に関与していない立場で、正しさ・アセスとの整合・技術リスク・検証の妥当性をレビューする(`TECH_REVIEW: OK / CONCERNS`) | **高信頼のB-5のみ** | 要件適合の判定(B-6のFableの仕事)、コード変更 |
 | 画像生成(Codex組み込み image_gen ツール) | Codex `gpt-6.1-sol` / `low` / read-only(`-Role grareco`) | グラフィックレコード(生成のみ。保存はOpusが回収) | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)に呼び出し | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
+| スカウト | Codex `gpt-6.1-sol` / `medium` / read-only(`-Role scout`) | Opus の問いに、対象プロジェクト・ゴール文書(指示があれば Web)を読んで固定の型(問い / 結論 / 根拠 / 未確認)で答える | Opus が調べものを行うとき(どの工程でも)。`bin/scout.ps1` 経由で 1 回 1 問 | コード変更。設計提案・要件判定。問いの外の助言 |
 
 各ロールの立場・受け渡し・決めること・決めないこと・判定のされ方は `references/roles.md`(ロール憲章)にまとめてある。各ロールへはその該当節を原文のまま配る(実装役: エージェント定義に埋め込み / codex: `codex-run.ps1` が差し込み / Fable: Opus が依頼文の冒頭に貼る)。この表と憲章が食い違う場合は、この表と SKILL.md が正。
 
@@ -99,13 +100,13 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 
 | ID | ポリシー | 要件 |
 |---|---|---|
-| PL-001 | Default roles | Fable=責任/判定/ユーザー目線の代理回答、Opus 5.5=整理/仕様/報告、Codex gpt-6.1-sol=技術PM(HOW回答・実装アセス)/技術レビュー(高信頼)/グラレコ(いずれも読み取り専用)、Sonnet 5.5=実装(アセスに従う実行者)をデフォルトとする |
+| PL-001 | Default roles | Fable=責任/判定/ユーザー目線の代理回答、Opus 5.5=整理/仕様/報告、Codex gpt-6.1-sol=技術PM(HOW回答・実装アセス)/技術レビュー(高信頼)/グラレコ/スカウト(調査。いずれも読み取り専用)、Sonnet 5.5=実装(アセスに従う実行者)をデフォルトとする |
 | PL-002 | No Fable by default | 「高性能だから」という理由だけでFableへ上げない。メインセッションはOpus 5.5で運用する |
 | PL-003 | Independent review | **高信頼強度では**、Fable提出前に実装非関与の codex `gpt-6.1-sol`(`-Role reviewer`)が技術観点で独立レビューする。要件適合はB-6のFableゲートが判定する。MVP強度ではOpusメインのセルフチェックで代替する |
 | PL-004 | Evidence first | 承認要求には検証証拠・残存未知リスト・未解決事項を必ず含める。推測だけでPASSを求めない |
 | PL-005 | Human after AI gate | 人間受け入れはFable PASS後に行う(MVPはCheckpoint到達時のみ) |
 | PL-006 | Human rejection routing | Human REJECTはFableへ戻し、戻り工程をFableが決める |
-| PL-007 | Budget observability | fable / codex-techpm / codex-review / codex-grareco / sonnet-builder の呼び出し(代理FableとのSendMessage往復を含む)を call-log.md に記録し、Opus:Fable ≈ 5:1 を目安に振り返る。MVPのヒアリング・代理ブレスト期(A-1a〜A-4)はfable往復が構造的に増えるため、目安は**ワークフローB以降**に適用する |
+| PL-007 | Budget observability | fable / codex-techpm / codex-review / codex-grareco / codex-scout / sonnet-builder の呼び出し(代理FableとのSendMessage往復を含む)を call-log.md に記録し、Opus:Fable ≈ 5:1 を目安に振り返る。MVPのヒアリング・代理ブレスト期(A-1a〜A-4)はfable往復が構造的に増えるため、目安は**ワークフローB以降**に適用する |
 | PL-008 | No forced ratio | 比率は目標であり、品質や安全に必要なFable呼び出しを禁止しない |
 | PL-009 | Context minimization | Fableへは goal-frame + 対象文書 + 仮定台帳の関連部分(+ 必要ならhearing-logの関連部分)のみを渡す。全コード・全会話を常時ロードしない。代理Fableは自インスタンス内の文脈保持のみ許容 |
 | PL-010 | Human cognitive load | 人間向け成果物は、ゴール → 結果 → 証拠 → リスク → 確認手順の順で構造化し、確定事項と仮説による決定を区別する(判断の内訳) |
@@ -128,6 +129,6 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 
 ## 観測
 
-- call-log.md 形式: `YYYY-MM-DD HH:MM | fable|codex-techpm|codex-review|codex-grareco|sonnet-builder | フェーズ | 目的`(1呼び出し1行。代理FableとのSendMessage往復も1往復1行)
+- call-log.md 形式: `YYYY-MM-DD HH:MM | fable|codex-techpm|codex-review|codex-grareco|codex-scout|sonnet-builder | フェーズ | 目的`(1呼び出し1行。代理FableとのSendMessage往復も1往復1行)
 - Opus 5.5メインセッション自身の消費は記録対象外(常駐のため)
 - Retrospective 作成時に、呼び出し比率(5:1目安・ワークフローB以降)に加えて、ループ回数・主要フェーズ所要時間(call-logの時刻から概算)・発見された未知を記載する。ハード制限にしない(PL-008)

@@ -12,7 +12,7 @@ state.md を読み直す。直近の retro.md 最大3件の要点を抜粋し、
 - **MVP**: **マイルストーン単位でまとめて**1〜数回、実装役に委譲する。タスク細分化しない。
 - **高信頼**: subagent-driven developmentと同じプロセス構造でタスク分解し、個別に委譲する。
 
-実装役は Agentツールの `subagent_type: "r-super-loop-powers:builder"`(`claude-sonnet-5-5`。Skill / Agent ツールを持たないので、プロセス系スキルを起動できない)で起動する。実行契約(スコープ・コミット禁止・要件再定義禁止・否定リスト)・ロール指示・出力契約・ロール憲章(roles.md の全体図+実装役の節。`scripts/sync-roles.ps1` で同期)はエージェント定義に入っているので、プロンプトに書かなくてよい。
+委譲文の「対象範囲」に書くファイルの確認はスカウト(`bin/scout.ps1`)に投げ、Opus は自分で探索しない。実装役は Agentツールの `subagent_type: "r-super-loop-powers:builder"`(`claude-sonnet-5-5`。Skill / Agent ツールを持たないので、プロセス系スキルを起動できない)で起動する。実行契約(スコープ・コミット禁止・要件再定義禁止・否定リスト)・ロール指示・出力契約・ロール憲章(roles.md の全体図+実装役の節。`scripts/sync-roles.ps1` で同期)はエージェント定義に入っているので、プロンプトに書かなくてよい。
 
 **(1) 委譲前の基準を記録する(1 回の呼び出し)**
 ラベルは `m<n>-impl`(再委譲は `m<n>-impl-2` …。高信頼でタスクごとに委譲する場合は `m<n>-t<k>-impl`)。
@@ -78,7 +78,7 @@ policy.md の発火条件(否定リスト該当・ユーザー固有判断・Sol
 
 **B-5 レビューとSubmission作成(Opus)**
 state.md を読み直す。
-- **MVP**: Opusメインが**セルフチェック**(goal-frame承認基準との対応・残存未知の列挙・未検証仮定の確認)を行い、`decisions.md` の4区分(要件由来 / Agent仮説HOW / 低確信 / 発見された未知)を確定させ、`templates/approval-submission.md` に従い `milestones/<n>-<名前>/submission.md` を作成する(判断記録欄から decisions.md を参照)。
+- **MVP**: Opusメインが**セルフチェック**(goal-frame承認基準との対応・残存未知の列挙・未検証仮定の確認)を行い、`decisions.md` の4区分(要件由来 / Agent仮説HOW / 低確信 / 発見された未知)を確定させ、`templates/approval-submission.md` に従い `milestones/<n>-<名前>/submission.md` を作成する(判断記録欄から decisions.md を参照)。submission の「検証」節に書く事実(テストの所在・設定の既定値など)の確認はスカウト(`bin/scout.ps1`)に投げる。判断は Opus が行う。
 - **高信頼**: **技術レビュー**を codex `gpt-6.1-sol`(`-Role reviewer`、read-only・effort max)で、**マイルストーンごとに1回**、その全タスクが `STATUS: OK` になった後に行う(PL-003)。ラベルは `m<n>-review`(CONCERNS 後の再レビューは `m<n>-review-2` …)。プロンプト(`<goal-dir>/codex-runs/<ラベル>.prompt.md`)には、goal-plan.md 該当部・マイルストーン定義・各タスクの plan 本文・受け入れ条件・委譲前の HEAD(このマイルストーン最初の委譲の `impl-runs/<ラベル>.base.txt` の値)・各委譲の `impl-check.ps1` の出力(`CHANGED_FILES_ACTUAL:` 行を含む)・実装役の報告を入れ、「`git diff <base>` と `git status --porcelain --untracked-files=all` で実際の変更を見よ。未追跡(新規)ファイルは `git diff` に出ないので直接読め」と書く。起動・完了判定は `references/codex-invocation.md`(`codex-run.ps1 -Role reviewer` → `codex-status.ps1`、`STATUS: OK` の `FINAL_MESSAGE_FILE` だけを採用)。最終行が `TECH_REVIEW: CONCERNS` なら、HIGH の指摘を引用して実装役へ再委譲し(B-2 に戻る)、解消してから submission を作る。MEDIUM / LOW は submission に記載する。**要件に合っているかはここでは見ない** — それは B-6 のゲートFableが判定する。`loop-log.ps1 -Who codex-review` で記録する。
 - どちらの場合も**残存未知リスト・仮定台帳サマリ・decisions.mdの確定**を必須とする(欠けたままB-6へ進まない)。
 
@@ -100,7 +100,7 @@ state.md を読み直す。`templates/human-review-report.md` に従い `human-r
 human-report.md を人間に提示し、受け入れテストを依頼する(MVPはCheckpoint単位)。提示してターンを終える前に**境界(a)**: `loop-log.ps1 -SetWait "Checkpoint <n> の受け入れテスト結果(ACCEPT / REJECT とコメント)" -Mark` を行い、依頼文の末尾に `/clear` と「続けて」を添える。結果を `acceptance.md` に記録する(ACCEPT / REJECT + コメント)。**フィードバックから新たに発見された未知・要望は assumptions.md に追記する**(次ループの入力)。ACCEPT の場合は `loop-log.ps1 -SetPhase finalization -Clear 待ち` にする。
 
 **B-9 REJECT処理(Fable)**
-REJECTの場合、Agentツール(model: fable、新規インスタンス)に goal-frame.md + human-report.md + REJECT理由を渡し、戻り先(タスク修正 / **Checkpoint配下の任意マイルストーン** / マイルストーン再計画 / ゴール再確認)を決定させる。REJECT理由から発見された未知は assumptions.md に追記する。決定に従い該当フェーズへ戻り、戻り先に応じて state.md を更新する(`loop-log.ps1 -SetPhase … -SetMilestone …`)。`loop-log.ps1 -Who fable` で記録する。
+REJECTの場合、Agentツール(model: fable、新規インスタンス)に goal-frame.md + human-report.md + REJECT理由を渡し、戻り先(タスク修正 / **Checkpoint配下の任意マイルストーン** / マイルストーン再計画 / ゴール再確認)を決定させる。REJECT理由から発見された未知は assumptions.md に追記する。REJECT 理由の原因調査(どこで何が起きたか)はスカウト(`bin/scout.ps1`)に投げ、戻り先の決定はゲートFableに委ねる。決定に従い該当フェーズへ戻り、戻り先に応じて state.md を更新する(`loop-log.ps1 -SetPhase … -SetMilestone …`)。`loop-log.ps1 -Who fable` で記録する。
 
 **B-10 確定処理(Opus)**
 acceptance.md に ACCEPT があることを確認してから、Checkpoint範囲(前回Checkpoint以降の中間コミットを含む)を確定として扱い、未コミット分を確定コミットする。`loop-log.ps1 -SetPhase learning` にする。

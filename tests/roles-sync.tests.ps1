@@ -19,7 +19,7 @@ Check 'repo-in-sync' ($r.Code -eq 0) $r.Out
 
 . (Join-Path $root 'skills\r-super-loop-powers\bin\roles-common.ps1')
 $text = [IO.File]::ReadAllText($roles)
-foreach ($id in @('overview', 'opus', 'proxy-fable', 'gate-fable', 'techpm', 'reviewer', 'builder', 'grareco')) {
+foreach ($id in @('overview', 'opus', 'proxy-fable', 'gate-fable', 'techpm', 'reviewer', 'builder', 'grareco', 'scout')) {
     $s = Get-RoleSection $text $id
     Check "section-$id" ([bool]$s) "no section ($id) in roles.md"
     if ($id -ne 'overview') {

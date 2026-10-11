@@ -38,6 +38,8 @@ Check 'log-does-not-touch-state' ((Get-Text (Join-Path $g 'state.md')) -eq $stat
 
 $r = Invoke-Log $g @('-Who', 'codex-grareco', '-Purpose', 'x', '-Phase', 'learning')
 Check 'log-explicit-phase' ((Get-Text (Join-Path $g 'call-log.md')) -match '(?m)\| codex-grareco \| learning \| x$') $r.Out
+$r = Invoke-Log $g @('-Who', 'codex-scout', '-Purpose', 'scout-1: どこで決まるか')
+Check 'log-codex-scout' ($r.Code -eq 0 -and (Get-Text (Join-Path $g 'call-log.md')) -match '(?m)\| codex-scout \| milestone-implementation \| scout-1: どこで決まるか$') $r.Out
 
 W (Join-Path $g 'state.md') ($stateLf -replace '- codex-run: -', '- codex-run: m1-grareco')
 $r = Invoke-Log $g @('-SetPhase', 'human-acceptance', '-SetMilestone', '2-two', '-SetWait', '受け入れテストの結果=OK/NG', '-Clear', 'codex-run')

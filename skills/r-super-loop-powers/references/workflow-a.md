@@ -20,7 +20,7 @@ codex の起動・完了判定・STATUS の読み方は `references/codex-invoca
 - **完了と採否**: `codex-status.ps1` で待ち、`STATUS: OK` のときだけ `FINAL_MESSAGE_FILE` を回答として採用する(ゲート保護ルール8)。OK以外は1回だけ再実行し、再度失敗したらユーザーへ報告し、Opusの判断で代替して続行するかを確認する(黙って代筆しない)。
 - **プロンプト必須要素**:
   1. 役割宣言: 「あなたはこのゴールの技術PM(実装責任者)。自分が実装を担当する前提で、HOWに関する問いに答えよ。コードは書かない・変更しない」
-  2. goal-frame.md 全文(貼る)。hearing-log.md・spec・plan は**貼らずにパスで渡し**(codex は read-only で読める)、関連する節名を示す。(2ラウンド目以降)前ラウンドの回答は `codex-runs/<前ラベル>.last.txt` のパスで渡す。本文が 40 KB を超えると `codex-run.ps1` が `WARN: prompt is N KB` を出す(全文貼りで 300 KB に達した実測がある)
+  2. goal-frame.md 全文(貼る)。hearing-log.md・spec・plan は**貼らずにパスで渡し**(codex は read-only で読める)、関連する節名を示す。(2ラウンド目以降)前ラウンドの回答は `codex-runs/<前ラベル>.last.txt` のパスで渡す。本文が 40 KB を超えると `codex-run.ps1` が `WARN: prompt is N KB` を出す(全文貼りで 300 KB に達した実測がある)。スカウトの報告(`scout/<label>.md`)があれば `REPORT:` のパスを添え、同じ探索を技術PMに繰り返させない
   3. 質問リスト(番号付き。アプローチ比較の問いは候補案を併記)
   4. 出力要求: 質問ごとに「回答 / 根拠(既存コードの該当箇所があれば引用) / 前提・リスク / 確信度(高・中・低)」。ユーザー判断が要る問いは `NEEDS_USER_VIEW:` 行で返す
 - **往復**: codexはセッションを継続しないため、**1ラウンド=1呼び出し**。effort `max` は1回が重いので、brainstormingの進行を止めない範囲でHOWの問いを束ねる(例: アプローチ提示の段階でそれまでのHOW論点をまとめて1回)。
@@ -47,7 +47,7 @@ Opusは質問をそのまま人間へ提示し、回答を `hearing-log.md` に�
 出力を `goal-frame.md` に保存し、`loop-log.ps1 -Who fable` で記録する。内容をユーザーに提示し、**ループ強度を確定**してもらい、方向のズレがないか確認する。A-1aで高信頼と答えた後にここでMVPへ確定が変わった場合は、A-1aの深掘りヒアリングを再開してからA-2へ進む。確定した強度を goal-frame.md の「人間の確定」欄と state.md に記録する(`loop-log.ps1 -SetIntensity MVP|高信頼`)。
 
 **A-2〜A-4 ブレスト → Spec → Plan(Opus + Superpowers)**
-`superpowers:brainstorming` を起動し、その標準フロー(spec作成 → writing-plans)に完全に従う。スキル内部の手順・ゲートには干渉しない。強度により質問・承認の相手を変える:
+現状把握(既存の流れ・該当ファイル・使われ方)は Opus が自分で探索せず `bin/scout.ps1` に投げる(SKILL.md「読むものと読まないもの」)。`superpowers:brainstorming` を起動し、その標準フロー(spec作成 → writing-plans)に完全に従う。スキル内部の手順・ゲートには干渉しない。強度により質問・承認の相手を変える:
 - **高信頼**: 従来通り人間が相手(人間が技術的見解を求めた場合のみ技術PMを呼ぶ)。
 - **MVP(代理ブレスト: Fable + 技術PM)**: 質問・設計承認の相手を人間ではなく**代理Fable**(SendMessage)と**技術PM**(「技術PM(Codex)共通契約」)にする。Opusはbrainstormingが出す問いを次のように振り分ける:
   - ユーザー価値・体験・優先順位・好み・受け入れ観点(WHAT) → **代理Fable**
@@ -56,7 +56,7 @@ Opusは質問をそのまま人間へ提示し、回答を `hearing-log.md` に�
   - 技術PMが `NEEDS_USER_VIEW:` を返した問い → 代理Fableへ回す
 
   代理Fableへの依頼文に必ず含める: 「あなたはユーザーの代理として**ユーザー目線で**回答する。根拠は goal-frame.md と hearing-log.md。技術PMの見解が添付されている場合、技術的な実現性・リスクの評価はそれを前提とし、ユーザー価値の観点で選べ。技術PMの評価とユーザー価値が衝突し、選択でユーザー体験が大きく変わる場合は回答せず `ASK_HUMAN:` を返せ。**ユーザー固有の判断(好み・業務文脈・優先順位)が必要でヒアリング記録から導けない問い、否定リスト該当、エスカレーション発火条件該当の問いには、回答せず `ASK_HUMAN: <人間向けの質問文>` と返せ**。」 ASK_HUMANが返った質問のみ人間へ提示し、回答を hearing-log.md に追記して代理Fableへ共有する。主要決定(採用アプローチ・設計承認・主要な技術選択)は goal-plan.md の「主要設計判断(Fable代理回答 / 技術PM回答による)」欄に、**どちらの回答を根拠にしたか**を付けて記録する。往復ごとに `loop-log.ps1 -Who fable|codex-techpm` で記録する。
-**未知の振り分け**: ヒアリング・ブレスト中に人間または代理Fableが「決めていない / わからない」と答えた問いは、その場で追及せず**仮説化して assumptions.md に記録し、続行する**。goal-frame.md の未知マップと突き合わせる。
+**未知の振り分け**: ヒアリング・ブレスト中に人間または代理Fableが「決めていない / わからない」と答えた問いは、その場で追及せず**仮説化して assumptions.md に記録し、続行する**。goal-frame.md の未知マップと突き合わせる。plan に書く対象ファイル・関数で場所が分からないものはスカウト(`bin/scout.ps1`)に投げる。
 **MVPでは plan 完成後に技術PMの実装アセスを取る**(「技術PM(Codex)共通契約」の実装アセス)。これが無いまま A-5 へ進まない。
 完了後、spec/planへの相対リンクとマイルストーン一覧を `goal-plan.md` に集約し、**Checkpoint印を付ける**(policy.md「Checkpointとマイルストーン粒度」: Checkpoint = ユーザー価値をE2Eで評価できる点。最終マイルストーンは必ずCheckpoint)。「主要設計判断(Fable代理回答 / 技術PM回答による)」欄もここに置く。
 

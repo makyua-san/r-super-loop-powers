@@ -31,6 +31,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 | Implementation Gate | — | ゲートFable(要件適合・残存未知) |
 | Checkpoint受け入れ | Opus(評価パッケージ) | 人間 |
 | 振り返り・グラレコ | Opus・グラレコ | — |
+| 調査(どの段階でも) | スカウト(codex。問いに答える報告) | Opus(報告の採否。根拠の無い結論は事実として扱わない) |
 
 すべての担当に共通する原則:
 

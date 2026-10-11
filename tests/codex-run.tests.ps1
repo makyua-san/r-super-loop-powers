@@ -7,6 +7,7 @@ $t = Join-Path ([IO.Path]::GetTempPath()) ('codexrun-' + [guid]::NewGuid().ToStr
 New-Item -ItemType Directory -Path $t | Out-Null
 $where = Join-Path $env:SystemRoot 'System32\where.exe'
 $skillDir = (Resolve-Path (Join-Path $PSScriptRoot '..\skills\r-super-loop-powers')).Path
+. (Join-Path $skillDir 'bin\codex-common.ps1')
 
 function New-Env([hashtable]$Extra) {
     $e = [ordered]@{ kind = 'exe'; exe = $where; version = '0.153.4'; model = 'gpt-6.1-sol'; envSchema = 2; skillDir = $skillDir; codexHome = $t }
@@ -116,6 +117,24 @@ Check 'long-prompt-warns' ($r.Code -eq 0 -and $r.Out -match '(?m)^WARN: prompt i
 $r = Invoke-Run $env1 'sp' @('-Role', 'techpm')
 Check 'short-prompt-no-warn' ($r.Out -notmatch '(?m)^WARN: prompt is') $r.Out
 Check 'grareco-skips-skill-read' ($grPrompt -match 'Do not read the imagegen system skill' -and $grPrompt -match 'call image_gen directly' -and $grPrompt -match 'NO_IMAGE_GENERATED') 'grareco brief'
+
+# v0.10: scout role (read-only, medium) and -Web. Web search is ON by default in codex
+# 0.160.0 (smoke note 2026-10-11 section 1), so scout passes web_search="disabled"
+# without -Web and web_search="live" with it; every other role passes nothing.
+$r = Invoke-Run $env1 'sc' @('-Role', 'scout')
+$m = Get-Meta 'sc'
+Check 'scout-read-only-medium' ($r.Code -eq 0 -and $m.sandbox -eq 'read-only' -and $m.effort -eq 'medium') $r.Out
+$scPrompt = Get-Content -Raw -Encoding UTF8 (Join-Path $t 'runs\sc.prompt.txt')
+Check 'scout-brief' ($scPrompt -match 'ROLE: SCOUT' -and $scPrompt -match 'WEB_UNAVAILABLE' -and $scPrompt -match 'four headings') 'scout brief'
+Check 'charter-scout-section' ($scPrompt -match '\(scout\)' -and $scPrompt -notmatch '\(techpm\)') 'scout charter section'
+Check 'scout-web-off-by-default' ($m.web -eq $false -and $m.command -match ('-c ' + [regex]::Escape((ConvertTo-Arg 'web_search="disabled"')))) $m.command
+Check 'web-off-by-default' ((Get-Meta 'tp').command -notmatch 'web_search' -and (Get-Meta 'gr').command -notmatch 'web_search') 'other roles must not get a web_search setting'
+$r = Invoke-Run $env1 'scw' @('-Role', 'scout', '-Web')
+$mw = Get-Meta 'scw'
+Check 'web-flag-passes-key' ($mw.web -eq $true -and $mw.command -match ('-c ' + [regex]::Escape((ConvertTo-Arg 'web_search="live"'))) -and $mw.command -notmatch 'disabled') $mw.command
+Check 'web-flag-reported' ($r.Out -match '(?m)^WEB: on') $r.Out
+$r = Invoke-Run $env1 'tpw' @('-Role', 'techpm', '-Web')
+Check 'web-flag-other-role' ((Get-Meta 'tpw').command -match 'web_search=') 'techpm -Web should pass the live key too'
 
 Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
