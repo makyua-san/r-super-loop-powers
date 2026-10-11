@@ -37,7 +37,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'codex-common.ps1')
-$Roles = @('fable', 'codex-techpm', 'codex-review', 'codex-grareco', 'sonnet-builder')
+$Roles = @('fable', 'codex-techpm', 'codex-review', 'codex-grareco', 'codex-scout', 'sonnet-builder')
 
 function Stop-Failed([string]$Reason, [string]$Next) {
     Write-Kv 'STATUS' 'FAILED'
