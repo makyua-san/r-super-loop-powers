@@ -58,15 +58,17 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 | 担当 | モデル / effort | 主責務 | 通常実行 | 禁止・抑制 |
 |---|---|---|---|---|
 | human(人間) | — | 意図の提示、ヒアリング回答(暗黙の前提・期待の表面化に協力)、具体物の評価とフィードバック、最終受け入れ、優先順位判断 | Goal Seed入力、ヒアリング回答、ループ強度の確定、A-8承認(MVPはWHATレベル)、ASK_HUMAN応答、Checkpoint受け入れテスト | 生diffの最初からの精読を前提にしない。答えを持たない問い(HOW)への回答を強制されない |
-| proxy(代理役) | gpt-5.6-sol / max | ヒアリング駆動(無自覚の既知の探索)、入口の基準設定(Goal Frame・強度提案)、MVPでは**代理ブレスト回答**(人間の代理としてHOW質問に回答・設計承認) | `codex exec` で1インスタンスを起動し `codex exec resume` で往復(A-1a〜A-4) | ブレスト・仕様・実装・レポートの**本文作成**。自分が代理回答した設計のゲート判定(自己承認) |
-| judge(判定役) | gpt-5.6-sol / ultra | 全体責任者としての承認ゲート(適合性+残存未知の許容性+仮定の事実扱いチェック)、マイルストーン開始確認、エスカレーション判定(DECIDE / ASK_HUMAN)、Human REJECT後の戻り先決定 | 呼び出しごとに新規セッション+最小コンテキスト(一時ディレクトリ隔離) | 本文作成。proxyセッションの `resume`(自己承認の禁止) |
+| proxy(代理役) | gpt-5.6-sol / max | ヒアリング駆動(無自覚の既知の探索)、入口の基準設定(Goal Frame・強度提案)、MVPでは**代理ブレスト回答**(人間の代理としてHOW質問に回答・設計承認) | driverがfork-noneで起動し、同一セッション内は `followup_task` で往復(A-1a〜A-4) | ブレスト・仕様・実装・レポートの**本文作成**。自分が代理回答した設計のゲート判定(自己承認)。ツール・filesystem探索 |
+| judge(判定役) | gpt-5.6-sol / ultra | 全体責任者としての承認ゲート(適合性+残存未知の許容性+仮定の事実扱いチェック)、マイルストーン開始確認、エスカレーション判定(DECIDE / ASK_HUMAN)、Human REJECT後の戻り先決定 | 判断ごとにdriverがfork-noneの新規agentを起動し、選別文書をinline | 本文作成。proxy/builder/reviewer agentの再利用。ツール・filesystem探索 |
 | driver(進行役) | gpt-5.6-sol / medium | メインセッション。**Solution仮説の設計責任**。整理・仕様化・計画・仮定台帳の管理・decisions.md・承認資料・評価パッケージ・振り返り・確定処理 | 常駐 | ゴール変更の独断確定 |
-| builder(実装役) | gpt-5.6-luna / max | 実装担当。コード変更、検証、自己検証報告 | マイルストーン単位(MVP)またはタスク単位(高信頼)で `codex exec` 起動 | コミット、要件の再定義、否定リスト該当の自律判断 |
-| reviewer(独立レビュー役) | gpt-5.6-sol / max | 高信頼強度での実装非関与の独立レビュー(PL-003) | B-5でのみ `codex exec` 起動 | 実装の変更、ゲート判定 |
-| グラフィックレコード | gpt-5.6-luna / max | グラレコ生成 | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)に `codex exec` で呼び出し | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
+| builder(実装役) | gpt-5.6-luna / max | 実装担当。コード変更、検証、自己検証報告 | マイルストーン単位(MVP)またはタスク単位(高信頼)でdriverがfork-none起動 | コミット、割当外path変更、再委譲、要件の再定義、否定リスト該当の自律判断 |
+| reviewer(独立レビュー役) | gpt-5.6-sol / max | 高信頼強度での実装非関与の独立レビュー(PL-003) | B-5でのみdriverがfork-none起動 | 実装の変更、再委譲、ゲート判定 |
+| グラフィックレコード | gpt-5.6-luna / max | グラレコ生成 | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)にdriverがfork-none起動 | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
 | 将来枠(未使用) | gpt-5.4-mini / gpt-5.3-codex-spark | 軽量探索・補助実装の候補 | — | 必須モデルとして固定しない |
 
 ## judge / proxy を呼ぶ場面(これ以外では呼ばない)
+
+driverは委譲時に、このポリシーの否定リスト・エスカレーション発火条件・役別禁止事項・当該工程の判断/検証基準を役への指示として本文で渡す。独立コンテキストの役が親のポリシー読込を継承すると仮定しない。判定対象文書はそれらの指示と分け、信頼されないデータとして渡す。
 
 1. ヒアリング(MVP・A-1a): 質問の設計・深掘り・充足判定を行うとき(proxy・往復)
 2. ループ開始時: Goal Seedから Goal Frame(方向・表面化した既知・制約・未知マップ・承認基準・終了条件・強度提案)を定義するとき(proxy)
@@ -94,9 +96,11 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 | PL-004 | Evidence first | 承認要求には検証証拠・残存未知リスト・未解決事項を必ず含める。推測だけでPASSを求めない |
 | PL-005 | Human after AI gate | 人間受け入れは judge PASS後に行う(MVPはCheckpoint到達時のみ) |
 | PL-006 | Human rejection routing | Human REJECTは judge へ戻し、戻り工程を judge が決める |
-| PL-007 | Budget observability | judge / proxy / builder / reviewer の呼び出し(proxyとの `resume` 往復を含む)を call-log.md に記録し、driver : judge+proxy ≈ 5:1 を目安に振り返る。MVPのヒアリング・代理ブレスト期(A-1a〜A-4)はproxy往復が構造的に増えるため、目安は**ワークフローB以降**に適用する |
+| PL-007 | Budget observability | judge / proxy / builder / reviewer の起動とfollow-upをtask_name・model・effort・入力・出力・error付きで call-log.md に記録し、driver : judge+proxy ≈ 5:1 を目安に振り返る。MVPのヒアリング・代理ブレスト期(A-1a〜A-4)はproxy往復が構造的に増えるため、目安は**ワークフローB以降**に適用する |
 | PL-008 | No forced ratio | 比率は目標であり、品質や安全に必要な judge / proxy 呼び出しを禁止しない |
-| PL-009 | Context minimization | judge / proxy へは goal-frame + 対象文書 + 仮定台帳の関連部分(+ 必要ならhearing-logの関連部分)のみを渡す。全コード・全会話を常時ロードしない。**渡す文書だけをコピーした一時ディレクトリで `codex exec -C <tmpdir> -s read-only` として起動し、さらにプロンプトで「与えられた文書のみで判断し、他のファイルを探索しない」と明記して担保する**。proxyは自インスタンス内の文脈保持のみ許容 |
+| PL-009 | Context minimization | 全役を `fork_turns: none` で起動する。judge / proxyへはgoal-frame + 対象文書 + 仮定台帳の関連部分(+必要ならhearing-logの関連部分)を境界付きデータとしてinlineし、ツール・filesystem探索を禁止する。不足はdriverへ要求させる。builder / reviewerへはbounded specと明示的に許可したsource pathだけを渡す。全コード・全会話を常時ロードしない。fork-noneは会話分離でありfilesystemやツールのsandboxではない |
+| PL-011 | Driver-owned delegation | role agentの起動・再起動・並列化はdriverが直接管理する。role agentによる再委譲は禁止し、例外はdriverが対象を明示承認した場合だけとする |
+| PL-012 | Parallel builders | 並列化は依存がなく変更pathが完全分離したbuilderタスクだけに限る。共有ファイル・依存タスクは直列化し、全必須結果と検証の回収前にreview/gateへ進まない |
 | PL-010 | Human cognitive load | 人間向け成果物は、ゴール → 結果 → 証拠 → リスク → 確認手順の順で構造化し、確定事項と仮説による決定を区別する(判断の内訳) |
 
 ## エスカレーション発火条件(いずれかを検出したらjudgeへ)
@@ -116,6 +120,8 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 
 ## 観測
 
-- call-log.md 形式: `YYYY-MM-DD HH:MM | judge|proxy|builder|reviewer | フェーズ | 目的`(1呼び出し1行。proxyとの `resume` 往復も1往復1行)
+資料不足だけの要求はSKILL.md「コンテキスト最小化」の資料補完経路を使う。driverが既存資料を補える場合、業務判断を代行せず、資料追加後に新規judgeへ再提出する。ASK_HUMANでも、既存資料の不足だけなら人間への中継前にこの経路を適用する。補えない資料・ユーザー固有判断は人間へ中継する。
+
+- call-log.md 形式: `YYYY-MM-DD HH:MM | judge|proxy|builder|reviewer | フェーズ | 目的 | task=<task_name> model=<model> effort=<effort> inputs=<入力> output=<出力> error=<なし|内容>`(先頭4列を維持し、起動・follow-up・失敗を1件1行)
 - driver(メインセッション)自身の消費は記録対象外(常駐のため)
 - Retrospective 作成時に、呼び出し比率(5:1目安・ワークフローB以降)に加えて、ループ回数・主要フェーズ所要時間(call-logの時刻から概算)・発見された未知を記載する。ハード制限にしない(PL-008)
