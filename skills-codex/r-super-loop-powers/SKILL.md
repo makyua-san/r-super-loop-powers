@@ -276,7 +276,7 @@ policy.md の発火条件(否定リスト該当・ユーザー固有判断・Sol
 **B-6 Implementation Gate(judge・新規セッション)**
 前提確認: submission.md が存在し、検証証拠と残存未知リストが含まれること。
 共通契約に従い、一時ディレクトリに goal-frame.md + マイルストーン定義 + submission.md + assumptions.md の未検証仮定をコピーして judge を `--output-schema`(規定形のとおり `<スキルのディレクトリの絶対パス>/schemas/gate-verdict.json`)付きで起動し、判定観点で「このマイルストーンのゴールを満たし、残存未知が許容可能か」を判定させる。返ったJSONを `gate-decision.md` へ整形保存、call-logに記録。
-- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)→ 中間コミット → state.md を次マイルストーンへ更新し、**人間承認なしで次のB-1へ**
+- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)+グラレコの送り先(下記 Learning 2b。あれば)→ 中間コミット → state.md を次マイルストーンへ更新し、**人間承認なしで次のB-1へ**
 - PASS + Checkpointマイルストーン(MVP)または高信頼 → state.md を human-acceptance に更新し、B-7へ
 - REVISE / REPLAN → `return_to` と `target_unknowns` に従って差し戻す(人間へは出さない)
 - BLOCKED → `blocking_questions` を人間へ提示して停止
@@ -300,6 +300,7 @@ acceptance.md に ACCEPT があることを確認してから、Checkpoint範囲
 
 1. **Retrospective(driver)**: `templates/retrospective-note.md` に従い `retro.md` を作成する(**MVP: Checkpoint単位** — 対象は前回Checkpoint以降の全マイルストーン / **高信頼**: マイルストーン単位)。観測欄に、ループ回数(REVISE/REPLAN差し戻し数)・呼び出し数(call-log.mdから)・主要フェーズ所要時間(call-logの時刻から概算)・**発見された未知**を記載する(5:1目安はワークフローB以降、ハード制限ではない)。「再利用できる知見・テンプレート候補」に「なし」以外を書いた場合、**このプロジェクトの外でも効くもの**は orca-meta の MCP tool `record_lesson` で送る(軸は person / agent / method。orca-meta が導入されていない環境では省略してよい)。
 2. **グラレコ(builder経由)**: human-report.md / gate-decision.md / retro.md の要点を `grareco-input.md` にまとめ、`templates/grareco-prompt.md` の指示文を埋めて builder 規定形(`gpt-5.6-luna` / max)に渡す(MVPの非Checkpoint分はB-6中間クローズで生成済みのため、ここではCheckpointマイルストーン分を生成する)。生成失敗時は grareco-input.md を残したまま先へ進む(ループ完了をブロックしない)。call-logに記録(builder)。
+2b. **グラレコの送り先(任意・プロジェクトが定義している場合だけ)**: 対象プロジェクトに `docs/r-super-loop-powers/grareco-sink.md` があれば、それを読み、`templates/grareco-spec.md` の形式の構造データ(JSON)を grareco-input.md と同じ文脈で driver が書いて、そのファイルの指示どおりに送る(例: r-beads は rb の報告に添え、ハブが図にして issue と日記に載せる)。2 の画像生成とは独立で、どちらか一方が失敗しても他方は行う。送信の失敗はループを止めない(人間向けの報告で一言触れる)。送り先が無いプロジェクトでは何もしない。driver 自身の操作なので call-log には記録しない。
 3. **次へ**: 未実装マイルストーンがあれば state.md を milestone-implementation に戻し(「次のCheckpoint」欄を更新)、B-1 から繰り返す。全マイルストーン完了なら state.md を done にし、ゴール全体の完了を人間に報告する。
 
 ## 例外・停止時の扱い

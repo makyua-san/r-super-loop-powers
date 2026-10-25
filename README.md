@@ -121,13 +121,13 @@ Stop フックは、ゴールループ中(`docs/r-super-loop-powers/*/state.md` 
 ## リポジトリ構成
 
 - `.claude-plugin/` — Claude版プラグインマニフェスト・マーケットプレイス定義
-- `skills/r-super-loop-powers/` — Claude版 SKILL.md(共通: 起動時チェック・契約・境界リセット) / policy.md(運用ポリシー) / templates/(9種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check・記帳 loop-log・再開パケット resume-packet・スカウト scout) / `schemas/`(実装報告スキーマ) / `references/`(ワークフローA `workflow-a.md`・ワークフローB `workflow-b.md`・codex呼び出し規約・ロール憲章 roles.md)
+- `skills/r-super-loop-powers/` — Claude版 SKILL.md(共通: 起動時チェック・契約・境界リセット) / policy.md(運用ポリシー) / templates/(10種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check・記帳 loop-log・再開パケット resume-packet・スカウト scout) / `schemas/`(実装報告スキーマ) / `references/`(ワークフローA `workflow-a.md`・ワークフローB `workflow-b.md`・codex呼び出し規約・ロール憲章 roles.md)
 - `agents/` — Claude版の実装役エージェント定義(`builder.md`、Sonnet 5.5)
 - `hooks/` — Claude版のフック(`hooks.json` / 再開注入 `resume-inject.ps1` / 文脈メーター `context-meter.ps1` / 人間向け応答チェック `human-message-check.ps1` + `judge-prompt.md` / 共通部 `hook-common.ps1`)
 - `tests/` — `bin/`・`hooks/`・`scripts/sync-roles.ps1`・SKILL の配置のテスト(`powershell -File tests\<名>.tests.ps1`)
 - `.codex-plugin/` — Codex版プラグインマニフェスト(`plugin.json`)
 - `.agents/plugins/` — Codex版マーケットプレイス定義(`marketplace.json`)
-- `skills-codex/r-super-loop-powers/` — Codex版 SKILL.md / policy.md / schemas/(ゲート判定・エスカレーション判定の構造化出力スキーマ) / templates/(9種、`skills/` からの複写)
+- `skills-codex/r-super-loop-powers/` — Codex版 SKILL.md / policy.md / schemas/(ゲート判定・エスカレーション判定の構造化出力スキーマ) / templates/(10種、`skills/` からの複写)
 - `scripts/` — `sync-templates.ps1`(templatesの複写・一致検証) / `sync-roles.ps1`(ロール憲章を実装役の定義へ同期・一致検証)
 - `docs/superpowers/specs/` — 設計仕様書
 - `docs/superpowers/plans/` — 実装計画
@@ -185,7 +185,7 @@ codex plugin add r-super-loop-powers@r-super-loop-powers-marketplace
 - 役名: Opus / Fable / Codex → driver / judge / proxy / builder / reviewer
 - ゲート判定は `schemas/gate-verdict.json` による構造化出力(PASS / REVISE / REPLAN / BLOCKED)
 - 代理役の文脈は `state.md` の `proxy-session:` に記録され、**セッションを跨いで復元できる**(Claude版にはない)
-- テンプレート9枚は Claude 版と同一。原本は `skills/r-super-loop-powers/templates/` で、`scripts/sync-templates.ps1` が `skills-codex/` 側へ複写する
+- テンプレート10枚は Claude 版と同一。原本は `skills/r-super-loop-powers/templates/` で、`scripts/sync-templates.ps1` が `skills-codex/` 側へ複写する
 
 ### E2Eチェックリスト(Codex版)
 
