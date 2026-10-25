@@ -85,7 +85,7 @@ state.md を読み直す。
 **B-6 Implementation Gate(ゲートFable・新規インスタンス)**
 前提確認: submission.md が存在し、検証証拠と残存未知リストが含まれること。
 共通契約に従い goal-frame.md + マイルストーン定義 + submission.md + assumptions.md の未検証仮定を渡し、判定観点で「このマイルストーンのゴールを満たし、残存未知が許容可能か」を判定させる。結果を `gate-decision.md` に保存し、`loop-log.ps1 -Who fable` で記録する。
-- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)→ 中間コミット → `loop-log.ps1 -SetMilestone "<次>" -SetGate impl-gate`。文脈メーターの通知「境界リセットの目安を超えている」が出ていれば `-Mark` も付けて**境界リセット**(境界(b))し、人間に `/clear` と「続けて」を頼んでターンを終える。出ていなければ**人間承認なしで次のB-1へ**
+- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)+グラレコの送り先(下記 Learning 2b。あれば)→ 中間コミット → `loop-log.ps1 -SetMilestone "<次>" -SetGate impl-gate`。文脈メーターの通知「境界リセットの目安を超えている」が出ていれば `-Mark` も付けて**境界リセット**(境界(b))し、人間に `/clear` と「続けて」を頼んでターンを終える。出ていなければ**人間承認なしで次のB-1へ**
 - PASS + Checkpointマイルストーン(MVP)または高信頼 → `loop-log.ps1 -SetPhase human-acceptance -SetGate human-acceptance` の後、B-7へ
 - REVISE / REPLAN → 指定された工程へ差し戻す(対象の未知・仮定が指定される。人間へは出さない)
 - BLOCKED → 人間へ質問して停止(境界(a))
@@ -114,4 +114,5 @@ state.md を読み直してから始める。
    - `STATUS: OK` なら `IMAGE:` 行に画像のパスが出る。Opus がそれをコピーする: `Copy-Item -LiteralPath "<IMAGE: の値>" -Destination "<milestone-dir>\grareco.png"`
    - `STATUS: NO_IMAGE` は、実行は終わったが画像が無い状態。call-log に「画像なし」と記録して先へ進む
    v0.9 からは imagegen の SKILL.md を読まずに image_gen を直接呼ばせる(ツールが拒んだときだけ読む)。読んだ場合は `BOUNDARY_HIT` の `WARN:` が出るが想定内。生成・回収のどちらで失敗しても grareco-input.md を残したまま先へ進む(ループ完了をブロックしない) — ここは `STATUS: OK` 以外でも停止しない唯一の例外である。`loop-log.ps1 -Who codex-grareco` で記録する。生成した画像を Opus が Read しない(人間に見せるならパスを示す)。
+2b. **グラレコの送り先(任意・プロジェクトが定義している場合だけ)**: 対象プロジェクトに `docs/r-super-loop-powers/grareco-sink.md` があれば、それを読み、`templates/grareco-spec.md` の形式の構造データ(JSON)を grareco-input.md と同じ文脈で書いて、そのファイルの指示どおりに送る(例: r-beads は rb の報告に添え、ハブが図にして issue と日記に載せる)。2 の codex 画像生成とは独立で、どちらか一方が失敗しても他方は行う。送信の失敗はループを止めない(人間向けの報告で一言触れる)。送り先が無いプロジェクトでは何もしない。Opus 自身の操作なので call-log には記録しない。
 3. **次へ**: 未実装マイルストーンがあれば `loop-log.ps1 -SetPhase milestone-implementation -SetMilestone "<次>" -SetCheckpoint "<次のCheckpoint>" -SetGate impl-gate -Mark` で戻し(境界(c))、人間に `/clear` と「続けて」を頼む。再開後に B-1 から繰り返す。全マイルストーン完了なら `loop-log.ps1 -SetPhase done -SetGate none -Clear milestone,次のCheckpoint,待ち` にし、ゴール全体の完了を人間に報告する。
