@@ -68,6 +68,8 @@ Check 'a-model-switch' ($a -match '/model fable' -and $a -match '/model opus' -a
 Check 'a-close-route' ($a -match 'phase: done' -and $a -match '## 結論') 'close route when not doing it'
 Check 'a-proxy-starts-at-a2' ($a -match 'A-2〜A-4 は代理Fable\(SendMessage 継続\)が生きている' -and $a -notmatch 'この区間は代理Fable') 'boundary wording updated'
 Check 'a-gate-ten-min' ($a -match '10 分') 'A-6 / assessment / proxy use the 10-minute default'
+Check 'b-verification-ten-min' ($b -match '10 分') 'B-2 verification uses the 10-minute default'
+Check 'b6-concerns-accepted' ($b -match '運用で見る懸念') 'B-6 treats operational concerns as accepted unknowns'
 # v0.11: operational concerns, direct-hearing log, report lists the concerns.
 $tpl = Join-Path $skillDir 'templates'
 $gf = Get-Text (Join-Path $tpl 'goal-frame.md')

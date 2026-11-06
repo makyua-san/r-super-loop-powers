@@ -27,7 +27,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\impl-check.
   1. `## TECHNICAL ASSESSMENT` — **MVP**: `tech-assessment.md` の該当 `## M<n>` 節を**原文のまま**貼る(要約・言い換えしない) / **高信頼**: 人間が承認した plan の該当タスク本文。エージェント定義がこの見出しを参照するので名前を変えない
   2. `## ACCEPTANCE CRITERIA` — 受け入れ条件(実装役が `acceptance_criteria` へ原文のまま写すので、検証可能な文で書く)
   3. `## SCOPE` — 対象ファイル・変更範囲(触ってよい範囲と、触らない範囲)
-  4. `## VERIFICATION` — **MVP**: 受け入れ基準に直結する検証+未知低減に効く検証のみ / **高信頼**: テストファースト+単体・結合・lint・型検査。実行すべきコマンドを具体的に書く
+  4. `## VERIFICATION` — **MVP**: 受け入れ基準に直結する検証+未知低減に効く検証のみ。1 回 10 分を超える実測は求めない(goal-frame.md の承認基準にあるものと、否定リストに触れる確認を除く。気になる点は報告させ、運用で見る懸念に足す) / **高信頼**: テストファースト+単体・結合・lint・型検査。実行すべきコマンドを具体的に書く
   5. `## OPEN ASSUMPTIONS` — 関連する未検証仮定(assumptions.mdから)
   6. `## OUTPUT` — 「最終メッセージは impl-report 形式の JSON を ```json フェンス1つで返すこと」
 
@@ -84,14 +84,14 @@ state.md を読み直す。
 
 **B-6 Implementation Gate(ゲートFable・新規インスタンス)**
 前提確認: submission.md が存在し、検証証拠と残存未知リストが含まれること。
-共通契約に従い goal-frame.md + マイルストーン定義 + submission.md + assumptions.md の未検証仮定を渡し、判定観点で「このマイルストーンのゴールを満たし、残存未知が許容可能か」を判定させる。結果を `gate-decision.md` に保存し、`loop-log.ps1 -Who fable` で記録する。
+共通契約に従い goal-frame.md + マイルストーン定義 + submission.md + assumptions.md の未検証仮定を渡し、判定観点で「このマイルストーンのゴールを満たし、残存未知が許容可能か」を判定させる。MVPでは、goal-frame.md の「運用で見る懸念」は利用者が許容した未知として扱い、確かめていないことを差し戻しの理由にしないと依頼文に書く。結果を `gate-decision.md` に保存し、`loop-log.ps1 -Who fable` で記録する。
 - PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)+グラレコの送り先(下記 Learning 2b。あれば)→ 中間コミット → `loop-log.ps1 -SetMilestone "<次>" -SetGate impl-gate`。文脈メーターの通知「境界リセットの目安を超えている」が出ていれば `-Mark` も付けて**境界リセット**(境界(b))し、人間に `/clear` と「続けて」を頼んでターンを終える。出ていなければ**人間承認なしで次のB-1へ**
 - PASS + Checkpointマイルストーン(MVP)または高信頼 → `loop-log.ps1 -SetPhase human-acceptance -SetGate human-acceptance` の後、B-7へ
 - REVISE / REPLAN → 指定された工程へ差し戻す(対象の未知・仮定が指定される。人間へは出さない)
 - BLOCKED → 人間へ質問して停止(境界(a))
 
 **B-7 Human Review Report=評価パッケージ(Opus)**
-state.md を読み直す。`templates/human-review-report.md` に従い `human-report.md` を作成する。
+state.md を読み直す。`templates/human-review-report.md` に従い `human-report.md` を作成する(MVPでは goal-frame.md の運用で見る懸念を 4.5 節へ転記する)。
 - **MVP**: 対象は**前回Checkpoint以降の全マイルストーン**。各マイルストーンの decisions.md を「3.5 判断の内訳」に集約する(Agent仮説HOW・低確信・実装対象外・新しく発見された未知を含む)。
 - **高信頼**: 従来通り対象マイルストーン単体。
 受け入れテスト手順は人間が1回のテストで確認できる具体性で書く。受け入れテストの証拠にスクショや画像を含める場合、Opus は画像を Read せず、パスを human-report.md に書く(人間に見せるなら SendUserFile)。
