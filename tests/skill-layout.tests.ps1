@@ -55,6 +55,19 @@ Check 'policy-grareco-low' ((Get-Text (Join-Path $skillDir 'policy.md')) -match 
 Check 'builder-read-exception' ((Get-Text (Join-Path $root 'agents\builder.md')) -match 'impl-runs/\*\.prompt\.md' -and (Get-Text (Join-Path $root 'agents\builder.md')) -match 'tech-assessment\.md') 'builder exception'
 $ver = ((Get-Text (Join-Path $root '.claude-plugin\plugin.json')) | ConvertFrom-Json).version
 Check 'version-0.10.0' ($ver -eq '0.10.0') "version=$ver"
+# v0.11: the Fable runs the hearing in the main session (references/hearing.md).
+$h = Get-Text (Join-Path $skillDir 'references\hearing.md')
+Check 'hearing-file' ($h -ne '') 'references/hearing.md missing'
+Check 'hearing-purposes' ($h -match '認識' -and $h -match '方針' -and $h -match 'スコープ' -and $h -match 'メタ' -and $h -match '利用場面') 'five purposes'
+Check 'hearing-no-fixed-list' ($h -notmatch '3〜7問' -and $h -notmatch '感情・体験 → 嗜好・制約 → 検証' -and $a -notmatch '3〜7問') 'fixed list removed'
+Check 'hearing-one-question' ($h -match '1 つだけ' -and $h -match 'AskUserQuestion') 'one question / selection UI'
+Check 'hearing-haiku' ($h -match 'model: "haiku"' -and $h -match '-Who haiku') 'haiku delegation'
+Check 'hearing-scout' ($h -match 'scout\.ps1') 'fable may ask the scout'
+Check 'hearing-ten-min' ($h -match '10 分' -and $h -match '運用で見る懸念') 'acceptance default'
+Check 'a-model-switch' ($a -match '/model fable' -and $a -match '/model opus' -and $a -match 'hearing-fable' -and $a -match 'references/hearing\.md') 'workflow-a hand-offs'
+Check 'a-close-route' ($a -match 'phase: done' -and $a -match '## 結論') 'close route when not doing it'
+Check 'a-proxy-starts-at-a2' ($a -match 'A-2〜A-4 は代理Fable\(SendMessage 継続\)が生きている' -and $a -notmatch 'この区間は代理Fable') 'boundary wording updated'
+Check 'a-gate-ten-min' ($a -match '10 分') 'A-6 / assessment / proxy use the 10-minute default'
 # v0.11: operational concerns, direct-hearing log, report lists the concerns.
 $tpl = Join-Path $skillDir 'templates'
 $gf = Get-Text (Join-Path $tpl 'goal-frame.md')
