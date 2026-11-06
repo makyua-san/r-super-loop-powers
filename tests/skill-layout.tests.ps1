@@ -70,6 +70,11 @@ Check 'a-proxy-starts-at-a2' ($a -match 'A-2〜A-4 は代理Fable\(SendMessage �
 Check 'a-gate-ten-min' ($a -match '10 分') 'A-6 / assessment / proxy use the 10-minute default'
 Check 'b-verification-ten-min' ($b -match '10 分') 'B-2 verification uses the 10-minute default'
 Check 'b6-concerns-accepted' ($b -match '運用で見る懸念') 'B-6 treats operational concerns as accepted unknowns'
+$roles = Get-Text (Join-Path $skillDir 'references\roles.md')
+Check 'roles-hearing-fable' ($roles -match '(?m)^## ヒアリング Fable \(hearing-fable\)') 'hearing-fable section'
+Check 'roles-opus-not-only-talker' ($roles -notmatch '人間と直接話すのはあなただけ') 'Opus is no longer the only one talking to the human'
+Check 'roles-proxy-a2' ($roles -match 'A-2〜A-4' -and $roles -notmatch '(?m)^- \*\*あなたの立場\*\*: MVP強度のヒアリングから') 'proxy range'
+Check 'roles-scout-from-fable' ($roles -match 'ヒアリング中の Fable') 'scout accepts questions from the hearing Fable'
 # v0.11: operational concerns, direct-hearing log, report lists the concerns.
 $tpl = Join-Path $skillDir 'templates'
 $gf = Get-Text (Join-Path $tpl 'goal-frame.md')

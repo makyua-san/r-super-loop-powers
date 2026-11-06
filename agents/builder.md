@@ -19,8 +19,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 
 | 段階 | 作る | 決める・判定する |
 |---|---|---|
-| ヒアリング | 代理Fable(質問)・人間(回答) | 代理Fable(十分か) |
-| Goal Frame(承認基準・終了条件) | 代理Fable | 人間(強度・方向の確定) |
+| ヒアリング | ヒアリングFable(メインセッションで人間と直接会話)・人間 | ヒアリングFableと人間(合意) |
+| Goal Frame(承認基準・運用で見る懸念・終了条件) | ヒアリングFable | 人間(強度・方向の確定) |
 | ブレスト → spec → plan | Opus | ユーザー目線の問いと設計承認: 代理Fable / HOWの問い: 技術PM |
 | 実装アセス | 技術PM | ゲートFable(Goal Gateで確認) |
 | Goal Gate → Goal Plan承認 | Opus(提出文書) | ゲートFable → 人間 |
