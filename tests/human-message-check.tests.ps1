@@ -150,6 +150,30 @@ Check 'empty-message-skips' ($r.Out -eq '' -and -not (Was-Called 'ok')) $r.Out
 $r = Invoke-Hook 'this is not json' $judgeOk
 Check 'bad-stdin-open' ($r.Code -eq 0 -and $r.Out -eq '') $r.Out
 
+# v0.11: while the Fable hearing runs (state.md "担当: hearing-fable") the judge gets a hearing note.
+$judgeCapture = New-Judge 'capture' ("findstr `"^`" > `"%~dp0stdin.txt`"`r`n" + 'echo {"ok": true}')
+$hearProj = Join-Path $t 'hearproj'
+$hearGoal = Join-Path $hearProj 'docs\r-super-loop-powers\g1'
+New-Item -ItemType Directory -Path $hearGoal -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $hearGoal 'state.md'), "- phase: goal-definition`n- 担当: hearing-fable`n", $utf8)
+$hearDoneProj = Join-Path $t 'heardoneproj'
+$hearDone = Join-Path $hearDoneProj 'docs\r-super-loop-powers\g1'
+New-Item -ItemType Directory -Path $hearDone -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $hearDone 'state.md'), "- phase: done`n- 担当: hearing-fable`n", $utf8)
+$stdinFile = Join-Path $t 'stdin.txt'
+
+$r = Invoke-Hook (New-Input $ja $hearProj) $judgeCapture
+$sent = if (Test-Path $stdinFile) { [IO.File]::ReadAllText($stdinFile, $utf8) } else { '' }
+Check 'judge-prompt-hearing' ($r.Out -eq '' -and $sent -match 'ヒアリング中' -and $sent -notmatch '\{\{MODE_NOTE\}\}') $sent
+
+Remove-Item $stdinFile -ErrorAction SilentlyContinue
+$r = Invoke-Hook (New-Input $ja $proj) $judgeCapture
+$sent = if (Test-Path $stdinFile) { [IO.File]::ReadAllText($stdinFile, $utf8) } else { '' }
+Check 'judge-prompt-normal' ($sent -ne '' -and $sent -notmatch 'ヒアリング中' -and $sent -notmatch '\{\{MODE_NOTE\}\}') $sent
+
+$r = Invoke-Hook (New-Input $en $hearDoneProj) $judgeOk
+Check 'hearing-done-skips' ($r.Out -eq '' -and -not (Was-Called 'ok')) $r.Out
+
 $bytes = [IO.File]::ReadAllBytes($hook)
 Check 'hook-has-bom' ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) 'save hooks/human-message-check.ps1 as UTF-8 with BOM'
 $hj = Get-Content -Raw (Join-Path $root 'hooks\hooks.json') | ConvertFrom-Json

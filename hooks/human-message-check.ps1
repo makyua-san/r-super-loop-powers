@@ -135,6 +135,16 @@ try {
         exit 0
     }
     $template = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'judge-prompt.md'), $Utf8)
+    # v0.11: while the Fable runs the hearing ("担当: hearing-fable"), the reply plays the
+    # user's words back first and asks one question last; the judge is told so.
+    $modeNote = ''
+    try {
+        $stateText = [System.IO.File]::ReadAllText((Join-Path $goalDir 'state.md'), $Utf8)
+        if ($stateText -match '(?m)^\s*-\s*担当:\s*hearing-fable\b') {
+            $modeNote = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'judge-prompt-hearing.md'), $Utf8).TrimEnd()
+        }
+    } catch { $modeNote = '' }
+    $template = $template.Replace('{{MODE_NOTE}}', $modeNote)
     $verdict = Invoke-Judge ($template.Replace('{{MESSAGE}}', $message))
     if ($verdict.ok -eq $false) {
         $why = [string]$verdict.reason
