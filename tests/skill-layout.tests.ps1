@@ -54,7 +54,13 @@ Check 'boundary-list' ($s -match '人間待ち' -and $s -match 'B-6 PASS' -and $
 Check 'policy-grareco-low' ((Get-Text (Join-Path $skillDir 'policy.md')) -match '`low` / read-only\(`-Role grareco`\)') 'policy.md grareco effort'
 Check 'builder-read-exception' ((Get-Text (Join-Path $root 'agents\builder.md')) -match 'impl-runs/\*\.prompt\.md' -and (Get-Text (Join-Path $root 'agents\builder.md')) -match 'tech-assessment\.md') 'builder exception'
 $ver = ((Get-Text (Join-Path $root '.claude-plugin\plugin.json')) | ConvertFrom-Json).version
-Check 'version-0.10.0' ($ver -eq '0.10.0') "version=$ver"
+Check 'version-0.11.0' ($ver -eq '0.11.0') "version=$ver"
+Check 'skill-model-check-hearing' ($s -match 'hearing-fable' -and $s -match '/model fable') 'model check knows the hearing'
+Check 'skill-hearing-ref' ($s -match 'references/hearing\.md') 'SKILL points to hearing.md'
+Check 'skill-proxy-a2' ($s -notmatch 'A-1a〜A-4') 'proxy alive range is A-2..A-4'
+Check 'policy-fable-direct' ($policyText -match 'メインセッション' -and $policyText -match '10 分') 'policy rows updated'
+$readme = Get-Text (Join-Path $root 'README.md')
+Check 'readme-direct-hearing' ($readme -match '/model fable' -and $readme -notmatch 'A-1aでFable駆動のヒアリング往復が行われ') 'README flow and E2E list'
 # v0.11: the Fable runs the hearing in the main session (references/hearing.md).
 $h = Get-Text (Join-Path $skillDir 'references\hearing.md')
 Check 'hearing-file' ($h -ne '') 'references/hearing.md missing'

@@ -14,7 +14,7 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
 ## 起動時チェック(毎回必ず実行)
 
 1. **ポリシー読込**: このスキルと同じディレクトリの `policy.md` を読む。以後の全判断はこのポリシーに従う。`references/roles.md`(ロール憲章)は起動時には読まず、Fable への依頼文を組む直前に「全体図 (overview)」と該当ロールの節だけを読む(「Fableサブエージェント共通契約」)。自分(Opus)の憲章の要点: ゲートの合否(ゲートFable)・受け入れ(人間)・委譲の成否(impl-check / codex-status)・実装方式(技術PM)は自分では決めない。実装は実装役に委譲する。人間向けの応答はフックが検査する。
-2. **モデル確認**: 自分が **Opus 5.5** で動いていない場合、ユーザーに `/model opus` への切替を提案し、切替またはユーザーの明示的な続行指示があるまでフェーズ作業を開始しない(PL-002)。
+2. **モデル確認**: state.md の `担当:` が `hearing-fable` の間は **Fable**(`/model fable`)、それ以外は **Opus 5.5**(`/model opus`)を正とする。違えば切替を提案し、切替またはユーザーの明示的な続行指示があるまでフェーズ作業を開始しない(PL-002)。
 3. **状態復元**:
    - **再開パケットが注入されている場合**(会話の先頭に `# 再開パケット — <goal-slug>` がある): それが state.md の正本である。Glob で探し直さない。パスとプレビューの形で来たら(上限超過)、先に `resume-packet.md` を全部読む。最初の応答で「フェーズ / 強度 / マイルストーン / 次のゲート / 待ち」をパケットの state.md の文面どおりに**復唱**してから手順に入る。パケットの「未完了の委譲」に codex のラベルがあれば `codex-status.ps1` で判定し、実装役のラベルがあれば `git status` を見てから次を決める。「待ち」が人間の回答待ちなら、ユーザーの今回のメッセージをその回答として扱う。
    - **注入されていない場合**: 対象プロジェクトで `docs/r-super-loop-powers/*/state.md` を探す(Globツール)。見つかった場合: 最新の state.md を読み、同じ 5 項目を 1〜3 行でユーザーに報告し、そのフェーズの手順から再開する。見つからない場合: ワークフローA(新規ゴール)を開始する。
@@ -40,7 +40,8 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
 docs/r-super-loop-powers/<goal-slug>/
 ├── state.md                 # 現在地(下記フォーマット)
 ├── goal-seed.md             # 人間の意図(原文のまま)
-├── hearing-log.md           # A-1aヒアリングとASK_HUMAN中継の記録
+├── hearing-log.md           # ヒアリングとASK_HUMAN中継の記録
+├── hearing/                 # ヒアリングのモック(HTML)
 ├── goal-frame.md            # Fable入口出力 = 承認基準・強度・未知マップ・終了条件の原本
 ├── assumptions.md           # 仮定台帳(全フェーズで追記)
 ├── goal-plan.md             # spec/planリンク + マイルストーン一覧(Checkpoint印) + 主要設計判断
@@ -136,7 +137,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 ## Fableサブエージェント共通契約
 
 - Agentツールで `model: "fable"` を指定して起動する。役割は2種類あり、**インスタンスを分離する**:
-  - **代理Fable(MVPのA-1a〜A-4)**: nameを付けて1インスタンスを起動し、SendMessageで往復を継続する(ヒアリング文脈の保持)。入力は goal-seed / goal-frame / hearing-log / retro抜粋 / templates構造のみ。
+  - **代理Fable(MVPのA-2〜A-4)**: nameを付けて1インスタンスを起動し、SendMessageで往復を継続する。入力は goal-seed / goal-frame / hearing-log のみ。ヒアリングはメインセッションの Fable が行う(`references/hearing.md`)。
   - **ゲート・判断Fable(A-6 / B-1 / B-4 / B-6 / B-9)**: 呼び出しごとに新規インスタンス。初回入力は goal-frame.md 全文 + 対象文書(submission / escalation / milestone定義) + assumptions.md の関連部分(未検証仮定) + 必要なら hearing-log.md の関連部分のみ。対象プロジェクトの生コード・全会話履歴を渡さない(PL-009)。追加資料を要求した場合のみ、SendMessageで1往復の追加提供を行う。
 - **ロール憲章の貼り付け(必須)**: 起動時の依頼文の冒頭に、このときだけ roles.md を開き、`<skill-dir>\references\roles.md` の「全体図 (overview)」節と該当ロールの節(代理Fable → 「代理Fable (proxy-fable)」、ゲート・判断Fable → 「ゲートFable (gate-fable)」)を**原文のまま**貼り、その後に各工程の依頼文を続ける。要約・言い換えをしない。代理Fableには初回起動時だけ貼る(SendMessage の往復では再送しない)。
 - ゲート判定の出力契約: `PASS | REVISE | REPLAN | BLOCKED` のいずれか1つ + 根拠(5行以内) + REVISE/REPLANの場合は戻り先工程と対象の未知・仮定。
@@ -151,7 +152,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 - (b) **条件付き**: B-6 PASS の中間クローズのあと。PostToolUse フック(`hooks/context-meter.ps1`)が「現在の文脈は約 N 万トークンで、境界リセットの目安(20 万)を超えている」と知らせているときだけ。知らせが無ければ切らずに次の B-1 へ進む
 - (c) Checkpoint の ACCEPT を確定処理(B-10)し、Learning を終えて次のマイルストーンへ戻るとき
 - (d) A-8 の Goal Plan 承認のあと(ワークフローBに入る前)
-- **切らない区間**: 代理Fable が生きている A-1a〜A-4(SendMessage の相手はセッションを跨げない)
+- **切らない区間**: 代理Fable が生きている A-2〜A-4(SendMessage の相手はセッションを跨げない)
 
 **手順(1 ターン)**:
 1. `loop-log.ps1 -GoalDir "<goal-dir>" -SetPhase … -SetMilestone … -SetWait … -Mark`(変える欄だけ。`-Mark` が `resume-packet.md` を組んで印 `resume-pending` を置く。`MARKED:` を確認する)
@@ -164,7 +165,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 
 ## プラグインのフック
 
-プラグインは 3 つのフックを持つ: SessionStart(再開パケットの注入)・PostToolUse(Agent 呼び出し後の文脈メーター)・Stop(人間向け応答チェック)。前 2 つは「境界リセット」のとおり。Stop は、ゴールループ中(phase が done でない state.md がある)にあなたが人間へ返す応答を、日本語か / 結論やお願いが冒頭か / 何をどう答えればよいか明確か / 内部用語を説明なしに使っていないか / 端的か、の5点で検査する。最初からこの基準で書く。`[r-super-loop-powers] 人間向けの応答を書き直してください` で始まる指摘を受けたら、内容は変えずに書き直して返す(1回だけ)。結果は `hook-log.md` に残り、判定役が動かないときは検査なしで通る。
+プラグインは 3 つのフックを持つ: SessionStart(再開パケットの注入)・PostToolUse(Agent 呼び出し後の文脈メーター)・Stop(人間向け応答チェック)。前 2 つは「境界リセット」のとおり。Stop は、ゴールループ中(phase が done でない state.md がある)にあなたが人間へ返す応答を、日本語か / 結論やお願いが冒頭か / 答え方が明確か / 内部用語を説明なしに使っていないか / 端的か、の5点で検査する。最初からこの基準で書く。`[r-super-loop-powers] 人間向けの応答を書き直してください` で始まる指摘を受けたら、内容は変えずに書き直して返す(1回だけ)。結果は `hook-log.md` に残り、判定役が動かないときは検査なしで通る。
 
 ## 読むものと読まないもの(文脈を薄く保つ)
 
@@ -181,8 +182,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 
 ## 例外・停止時の扱い
 
-- どのフェーズでも、人間の入力が必要になったら「待ち」を書き、境界リセット(a)を行ってから停止する(代理Fable が生きている A-1a〜A-4 では「待ち」だけを書く)。
-- セッションが切れても、次回 `/r-super-loop-powers` 起動時に state.md(または再開パケット)から再開できる(NFR-04)。代理Fableのインスタンスはセッションを跨いで継続できないため、再開後に代理Fableが必要になった場合は、goal-seed / goal-frame / hearing-log を渡して新しい代理Fableを起動する(記録がある限り文脈は復元できる)。
+- どのフェーズでも、人間の入力が必要になったら「待ち」を書き、境界リセット(a)を行ってから停止する(代理Fable が生きている A-2〜A-4 では「待ち」だけを書く)。
+- セッションが切れても、次回 `/r-super-loop-powers` 起動時に state.md(または再開パケット)から再開できる(NFR-04)。代理Fableはセッションを跨げないので、再開後に必要なら goal-seed / goal-frame / hearing-log を渡して新しく起動する。
 - **codex委譲はセッションを跨いで生き残る。** 再開時に state.md の `codex-run:` にラベルが残っていたら、まず `codex-status.ps1` でそのラベルを判定してから次の行動を決める(`LOST` なら何も完了していない、`OK` なら結果を回収できる)。判定せずに再委譲しない。スカウトの未完了(`codex-run:` か「未完了の委譲」に出る)は `scout.ps1 -Collect <ラベル>` で回収する。
 - **実装役の委譲はセッションを跨がない。** 再開時に `impl-runs/<ラベル>.prompt.md` があって `.report.md` が無い委譲は、完了していない。`git status` を確認してから、新しいラベルで再委譲する(`-Prepare` を取り直す)。
 - このスキルは Superpowers・gstack等の他スキルのファイルを読むことはあっても、**変更してはならない**(SK-001)。

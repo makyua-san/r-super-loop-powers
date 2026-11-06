@@ -4,7 +4,7 @@ Superpowersの上位に薄く重なる**ゴールループ・オーケストレ�
 
 Goal Loopの目的は **A. 要件適合性**(作りたかったものを正しく作れているか)と **B. 未知の低減**(最初には分からなかった正解を、作りながら発見する)の2つ。品質最大化・速度最大化は目的ではない。AIが未知に仮説を立てて評価可能な具体物まで作り、人間は評価とフィードバックを担う。作業そのものの進め方はSuperpowersに委ね、内部には一切干渉しない。
 
-MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確定を求めない。開始前のFableヒアリングでゴール・文脈・暗黙の期待(無自覚の既知)を表面化し、HOWはAgentが仮説化して自律的に実装・評価する。Human Feedbackは定期ゲートではなくエスカレーション(ASK_HUMAN)であり、人間の受け入れは**Checkpoint**(ユーザー価値がEnd-to-Endで成立した点)でのみ行う。
+MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確定を求めない。開始前に Fable がメインセッションで利用者と直接話し(`/model fable`)、ゴール・必要性・優先度・範囲を上流から確かめ(v0.11)、HOWはAgentが仮説化して自律的に実装・評価する。Human Feedbackは定期ゲートではなくエスカレーション(ASK_HUMAN)であり、人間の受け入れは**Checkpoint**(ユーザー価値がEnd-to-Endで成立した点)でのみ行う。
 
 ```
 人間  ──(Goal Seed / ヒアリング回答 / 強度確定 / ASK_HUMAN応答 / Checkpoint評価)──┐
@@ -22,7 +22,7 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 
 ## ループ強度
 
-- **MVP(既定)**: Fableヒアリング → HOW委任(代理ブレスト: Fable=ユーザー目線 / 技術PM=Codex gpt-6.1-sol・effort maxによるHOW回答+実装アセス) → マイルストーン自律進行(実装はSonnet 5.5サブエージェントがアセスに従って実行)(Fableゲート+中間コミット) → Checkpointでのみ評価パッケージ+Human Acceptance。人間の関与は「ヒアリング回答 / Goal Frame確定 / Goal Plan承認(WHATレベル) / ASK_HUMAN応答 / Checkpoint受け入れ」の5点
+- **MVP(既定)**: Fableヒアリング(`/model fable` で直接会話 → `/model opus` に戻す) → HOW委任(代理ブレスト: Fable=ユーザー目線 / 技術PM=Codex gpt-6.1-sol・effort maxによるHOW回答+実装アセス) → マイルストーン自律進行(実装はSonnet 5.5サブエージェントがアセスに従って実行)(Fableゲート+中間コミット) → Checkpointでのみ評価パッケージ+Human Acceptance。受け入れ条件は稼働テスト+短時間の要件確認で、1 回 10 分を超える実測は「運用で見る懸念」として使いながら確かめる。人間の関与は「ヒアリング回答 / Goal Frame確定 / Goal Plan承認(WHATレベル) / ASK_HUMAN応答 / Checkpoint受け入れ」の5点
 - **高信頼**: 人間参加のブレスト・タスク分解・diff確認・独立レビュー・フルテスト・マイルストーン毎Acceptance
 - Goal Frame作成時にFableが提案し、人間が確定する。FableゲートとHuman Acceptanceは両強度で維持される
 
@@ -34,7 +34,7 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - 対象プロジェクトによっては Codex の `trust_level` 設定(`~/.codex/config.toml` の `[projects]`)が必要になる場合がある
 - ゴール開始時にプリフライト(`bin/codex-preflight.ps1`)が走り、codex実体・バージョン・認証・モデル疎通を確認する。codex は読み取り専用でしか使わないので、書き込み権限やサンドボックス解除は要らない。ここで止まった場合は表示された `REASON:` に従う
 - Claude Code で Sonnet 5.5(`claude-sonnet-5-5`)が使えること(実装役のプラグイン同梱エージェントが指定する)
-- メインセッションは **Opus 5.5**(`/model opus`。aliasは最新Opus=5.5に解決される)で運用する(Fable消費をヒアリング・代理回答・承認ゲートに限定するため)
+- メインセッションは **Opus 5.5**(`/model opus`。aliasは最新Opus=5.5に解決される)で運用する(Fable消費をヒアリング・代理回答・承認ゲートに限定するため)。ヒアリングの間だけ `/model fable` に切り替える(スキルが案内する)
 
 ## インストール
 
@@ -51,14 +51,15 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - **再開**: 同じコマンドで起動すると `docs/r-super-loop-powers/*/state.md` から現在地を復元する
 - **境界リセット(v0.9)**: 人間待ち・Checkpoint 確定・Goal Plan 承認の直後(と、文脈が 20 万トークンを超えたマイルストーン境界)で Opus が `state.md` を更新して印 `resume-pending` を置き、`/clear` を頼む。`/clear` のあと「続けて」と送ると、SessionStart フックが `bin/resume-packet.ps1` の再開パケット(state.md・否定リスト・制約/承認基準/終了条件・未検証仮定・直近の判定と retro・未完了の委譲。要約なし)を注入して再開する。コンパクションは使わない(制約の取りこぼしを避けるため)
 
-フェーズの流れ(MVP): ヒアリング(Fable往復・無自覚の既知の表面化) → Goal Frame(強度確定) → ブレスト/Spec/Plan(Fable代理回答+技術PM回答・Checkpoint配置) → Goal Gate(Fable) → 人間承認(WHATレベル) → マイルストーン自律実装(Sonnet実装役 → impl-check → Fableゲート → 判断記録+グラレコ+中間コミット) → Checkpoint: 評価パッケージ → 人間受け入れ → 確定 → 振り返り
+フェーズの流れ(MVP): 照合(スカウト) → `/model fable` → ヒアリング(Fableと直接会話) → Goal Frame(強度確定) → `/model opus` → ブレスト/Spec/Plan(Fable代理回答+技術PM回答・Checkpoint配置) → Goal Gate(Fable) → 人間承認(WHATレベル) → マイルストーン自律実装(Sonnet実装役 → impl-check → Fableゲート → 判断記録+グラレコ+中間コミット) → Checkpoint: 評価パッケージ → 人間受け入れ → 確定 → 振り返り
 
 ### 役とモデル(Claude版)
 
 | 役 | モデル / effort | 担当 |
 |---|---|---|
 | メイン | Opus 5.5(`/model opus`) | 進行管理・成果物作成・代理ブレストでの問いの振り分け |
-| 代理Fable | Fable(`Agent model: fable`) | ヒアリング駆動・Goal Frame・代理ブレストの**ユーザー目線**の回答と設計承認 |
+| ヒアリングFable | Fable(メインセッション。`/model fable`) | 利用者と直接会話するヒアリングと Goal Frame。Web の事例・HTML のモック・選択肢の案は Haiku のサブエージェントに作らせる |
+| 代理Fable | Fable(`Agent model: fable`) | 代理ブレスト(A-2〜A-4)の**ユーザー目線**の回答と設計承認。根拠はヒアリング記録 |
 | ゲート・判断Fable | Fable(`Agent model: fable`、呼び出し毎に新規) | 承認ゲート・マイルストーン開始確認・エスカレーション判定・REJECT後の戻り先決定 |
 | 技術PM | codex `gpt-6.1-sol` / max / read-only | 代理ブレストで**HOWに係る問い**に実装責任者として回答し、A-4末にマイルストーン別の実装アセスを出す |
 | 実装 | Sonnet 5.5(`r-super-loop-powers:builder`) | 技術PMのアセスに従う実行者として実装と自己検証(Skill/Agentツールなし・ブレスト/計画はしない)。成否は `impl-check.ps1` が判定 |
@@ -88,8 +89,10 @@ Stop フックは、ゴールループ中(`docs/r-super-loop-powers/*/state.md` 
 小さなプロジェクトで1ゴール(中間マイルストーン1つ以上+Checkpoint1つ以上)を実行し、以下を確認する:
 
 - [ ] state.md 不在時に新規ゴール開始フローに入る
-- [ ] MVP選択時、A-1aでFable駆動のヒアリング往復が行われ、hearing-log.md に記録される
-- [ ] ヒアリングの質問にHOW質問(UI形式・実装方式の選択)が含まれない
+- [ ] A-0 の後に `/model fable` が案内され、Fable がメインセッションで利用者と直接ヒアリングし、hearing-log.md に原文で記録される。Goal Frame 確定後に `/model opus` が案内される
+- [ ] ヒアリングが定型の項目をなぞらず、1 回に 1 つだけ問う。具体的な機能・実装方式を詰めない。選択肢が立つ問いは選択画面で出る
+- [ ] 1 回 10 分を超える実測が、利用者の確認なしに承認基準に入らず「運用で見る懸念」に分かれる
+- [ ] A-2 の代理Fableが、ヒアリング記録だけを根拠に答えられる
 - [ ] goal-frame.md に「ヒアリングで表面化した既知」があり、ループ強度が提案→人間確定される
 - [ ] MVPのブレスト(A-2〜A-4)でユーザー目線の質問・設計承認が代理Fableに、HOWの質問が技術PMに向かい、人間にはASK_HUMAN該当のみ届く
 - [ ] 技術PMが `codex-run.ps1 -Role techpm`(read-only・max)で起動され、`STATUS: OK` の回答だけが採用される(コードを変更していない)
