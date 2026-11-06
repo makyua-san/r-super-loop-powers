@@ -55,6 +55,16 @@ Check 'policy-grareco-low' ((Get-Text (Join-Path $skillDir 'policy.md')) -match 
 Check 'builder-read-exception' ((Get-Text (Join-Path $root 'agents\builder.md')) -match 'impl-runs/\*\.prompt\.md' -and (Get-Text (Join-Path $root 'agents\builder.md')) -match 'tech-assessment\.md') 'builder exception'
 $ver = ((Get-Text (Join-Path $root '.claude-plugin\plugin.json')) | ConvertFrom-Json).version
 Check 'version-0.10.0' ($ver -eq '0.10.0') "version=$ver"
+# v0.11: operational concerns, direct-hearing log, report lists the concerns.
+$tpl = Join-Path $skillDir 'templates'
+$gf = Get-Text (Join-Path $tpl 'goal-frame.md')
+$hl = Get-Text (Join-Path $tpl 'hearing-log.md')
+$hr = Get-Text (Join-Path $tpl 'human-review-report.md')
+Check 'tpl-goal-frame-concerns' ($gf -match '(?m)^## 運用で見る懸念' -and $gf -match '10 分') 'goal-frame concerns section'
+Check 'tpl-hearing-log-direct' ($hl -match '(?m)^## 結論' -and $hl -match '整理して返した内容' -and $hl -notmatch '過去の不満・避けたい体験') 'hearing-log template'
+Check 'tpl-report-concerns' ($hr -match '運用で見る懸念') 'human report lists concerns'
+$cver = ((Get-Text (Join-Path $root '.codex-plugin\plugin.json')) | ConvertFrom-Json).version
+Check 'codex-version-0.1.2' ($cver -eq '0.1.2') "codex version=$cver"
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\sync-templates.ps1') -Mode Verify | Out-Null
 Check 'templates-in-sync' ($LASTEXITCODE -eq 0) 'sync-templates Verify failed'
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\sync-roles.ps1') -Mode Verify | Out-Null
