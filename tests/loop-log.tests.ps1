@@ -40,6 +40,8 @@ $r = Invoke-Log $g @('-Who', 'codex-grareco', '-Purpose', 'x', '-Phase', 'learni
 Check 'log-explicit-phase' ((Get-Text (Join-Path $g 'call-log.md')) -match '(?m)\| codex-grareco \| learning \| x$') $r.Out
 $r = Invoke-Log $g @('-Who', 'codex-scout', '-Purpose', 'scout-1: どこで決まるか')
 Check 'log-codex-scout' ($r.Code -eq 0 -and (Get-Text (Join-Path $g 'call-log.md')) -match '(?m)\| codex-scout \| milestone-implementation \| scout-1: どこで決まるか$') $r.Out
+$r = Invoke-Log $g @('-Who', 'haiku', '-Purpose', 'A-1a 事例調査')
+Check 'who-haiku' ($r.Code -eq 0 -and (Get-Text (Join-Path $g 'call-log.md')) -match '(?m)\| haiku \| milestone-implementation \| A-1a 事例調査$') $r.Out
 
 W (Join-Path $g 'state.md') ($stateLf -replace '- codex-run: -', '- codex-run: m1-grareco')
 $r = Invoke-Log $g @('-SetPhase', 'human-acceptance', '-SetMilestone', '2-two', '-SetWait', '受け入れテストの結果=OK/NG', '-Clear', 'codex-run')
