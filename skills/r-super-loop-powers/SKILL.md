@@ -14,7 +14,7 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
 ## 起動時チェック(毎回必ず実行)
 
 1. **ポリシー読込**: このスキルと同じディレクトリの `policy.md` を読む。以後の全判断はこのポリシーに従う。`references/roles.md`(ロール憲章)は起動時には読まず、Fable への依頼文を組む直前に「全体図 (overview)」と該当ロールの節だけを読む(「Fableサブエージェント共通契約」)。自分(Opus)の憲章の要点: ゲートの合否(ゲートFable)・受け入れ(人間)・委譲の成否(impl-check / codex-status)・実装方式(技術PM)は自分では決めない。実装は実装役に委譲する。人間向けの応答はフックが検査する。
-2. **モデル確認**: state.md の `担当:` が `hearing-fable` の間は **Fable**(`/model fable`)、それ以外は **Opus 5.5**(`/model opus`)を正とする。違えば切替を提案し、切替またはユーザーの明示的な続行指示があるまでフェーズ作業を開始しない(PL-002)。
+2. **モデル確認**: state.md の `担当:` が `hearing-fable` の間は **Fable**(`/model fable`)、それ以外は **Opus 5.5**(`/model opus`)を正とする。違えば切替を提案し、切替まで(ヒアリングは利用者が Fable が使えないと明示するまで)作業を始めない(PL-002)。
 3. **状態復元**:
    - **再開パケットが注入されている場合**(会話の先頭に `# 再開パケット — <goal-slug>` がある): それが state.md の正本である。Glob で探し直さない。パスとプレビューの形で来たら(上限超過)、先に `resume-packet.md` を全部読む。最初の応答で「フェーズ / 強度 / マイルストーン / 次のゲート / 待ち」をパケットの state.md の文面どおりに**復唱**してから手順に入る。パケットの「未完了の委譲」に codex のラベルがあれば `codex-status.ps1` で判定し、実装役のラベルがあれば `git status` を見てから次を決める。「待ち」が人間の回答待ちなら、ユーザーの今回のメッセージをその回答として扱う。
    - **注入されていない場合**: 対象プロジェクトで `docs/r-super-loop-powers/*/state.md` を探す(Globツール)。見つかった場合: 最新の state.md を読み、同じ 5 項目を 1〜3 行でユーザーに報告し、そのフェーズの手順から再開する。見つからない場合: ワークフローA(新規ゴール)を開始する。
@@ -73,7 +73,7 @@ docs/r-super-loop-powers/<goal-slug>/
 - 強度: MVP | 高信頼 | 未確定
 - milestone: <n>-<名前> または -
 - 次のCheckpoint: <n>-<名前> または -
-- 担当: opus-main | fable | codex-techpm | codex-review | sonnet-builder | human
+- 担当: opus-main | hearing-fable | fable | codex-techpm | codex-review | sonnet-builder | human
 - 次のゲート: goal-gate | impl-gate | human-acceptance | none
 - 待ち: <人間待ちの場合はその内容。なければ ->
 - skill-dir: <このスキルのディレクトリの絶対パス>        # 起動時チェック5で解決
@@ -152,7 +152,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 - (b) **条件付き**: B-6 PASS の中間クローズのあと。PostToolUse フック(`hooks/context-meter.ps1`)が「現在の文脈は約 N 万トークンで、境界リセットの目安(20 万)を超えている」と知らせているときだけ。知らせが無ければ切らずに次の B-1 へ進む
 - (c) Checkpoint の ACCEPT を確定処理(B-10)し、Learning を終えて次のマイルストーンへ戻るとき
 - (d) A-8 の Goal Plan 承認のあと(ワークフローBに入る前)
-- **切らない区間**: 代理Fable が生きている A-2〜A-4(SendMessage の相手はセッションを跨げない)
+- **切らない区間**: ヒアリング中(A-0 の終わり〜A-1b)と、代理Fable が生きている A-2〜A-4
 
 **手順(1 ターン)**:
 1. `loop-log.ps1 -GoalDir "<goal-dir>" -SetPhase … -SetMilestone … -SetWait … -Mark`(変える欄だけ。`-Mark` が `resume-packet.md` を組んで印 `resume-pending` を置く。`MARKED:` を確認する)
@@ -182,7 +182,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 
 ## 例外・停止時の扱い
 
-- どのフェーズでも、人間の入力が必要になったら「待ち」を書き、境界リセット(a)を行ってから停止する(代理Fable が生きている A-2〜A-4 では「待ち」だけを書く)。
+- どのフェーズでも、人間の入力が必要になったら「待ち」を書き、境界リセット(a)を行ってから停止する(切らない区間では「待ち」だけを書く)。
 - セッションが切れても、次回 `/r-super-loop-powers` 起動時に state.md(または再開パケット)から再開できる(NFR-04)。代理Fableはセッションを跨げないので、再開後に必要なら goal-seed / goal-frame / hearing-log を渡して新しく起動する。
 - **codex委譲はセッションを跨いで生き残る。** 再開時に state.md の `codex-run:` にラベルが残っていたら、まず `codex-status.ps1` でそのラベルを判定してから次の行動を決める(`LOST` なら何も完了していない、`OK` なら結果を回収できる)。判定せずに再委譲しない。スカウトの未完了(`codex-run:` か「未完了の委譲」に出る)は `scout.ps1 -Collect <ラベル>` で回収する。
 - **実装役の委譲はセッションを跨がない。** 再開時に `impl-runs/<ラベル>.prompt.md` があって `.report.md` が無い委譲は、完了していない。`git status` を確認してから、新しいラベルで再委譲する(`-Prepare` を取り直す)。

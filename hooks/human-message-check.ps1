@@ -105,10 +105,13 @@ function Invoke-Judge([string]$Prompt) {
     return ($m.Value | ConvertFrom-Json)
 }
 
-function Send-Block([string]$Why) {
+function Send-Block([string]$Why, [bool]$Hearing = $false) {
     # The template adds its own full stop after the reason.
     $Why = $Why.Trim().TrimEnd([char[]]@([char]0x3002, '.'))
-    $reason = "[r-super-loop-powers] 人間向けの応答を書き直してください: $Why。内容は変えず、日本語で、結論・お願いしたいことを冒頭に、内部用語は言い換えて端的に。"
+    $how = '結論・お願いしたいことを冒頭に'
+    # During the Fable hearing the reply plays back first and asks one question last; keep that shape.
+    if ($Hearing) { $how = '整理して返す形と最後の問い 1 つは保ち' }
+    $reason = "[r-super-loop-powers] 人間向けの応答を書き直してください: $Why。内容は変えず、日本語で、$how、内部用語は言い換えて端的に。"
     Write-StdoutUtf8 (@{ decision = 'block'; reason = $reason } | ConvertTo-Json -Compress)
 }
 
@@ -149,7 +152,7 @@ try {
     if ($verdict.ok -eq $false) {
         $why = [string]$verdict.reason
         if (-not $why.Trim()) { $why = '分かりにくい箇所があります' }
-        Send-Block $why
+        Send-Block $why ($modeNote -ne '')
         Write-HookLogLine $goalDir 'BLOCK' "ja-ratio=$ratioText" $why
     } else {
         Write-HookLogLine $goalDir 'PASS' "ja-ratio=$ratioText" ''

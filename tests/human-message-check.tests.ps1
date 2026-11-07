@@ -171,6 +171,11 @@ $r = Invoke-Hook (New-Input $ja $proj) $judgeCapture
 $sent = if (Test-Path $stdinFile) { [IO.File]::ReadAllText($stdinFile, $utf8) } else { '' }
 Check 'judge-prompt-normal' ($sent -ne '' -and $sent -notmatch 'ヒアリング中' -and $sent -notmatch '\{\{MODE_NOTE\}\}') $sent
 
+$r = Invoke-Hook (New-Input $ja $hearProj) $judgeNg
+Check 'hearing-block-keeps-format' ($r.Out -match '"decision"\s*:\s*"block"' -and $r.Out -notmatch '冒頭に' -and $r.Out -match '最後') $r.Out
+$r = Invoke-Hook (New-Input $ja $proj) $judgeNg
+Check 'normal-block-asks-lead' ($r.Out -match '冒頭に') $r.Out
+
 $r = Invoke-Hook (New-Input $en $hearDoneProj) $judgeOk
 Check 'hearing-done-skips' ($r.Out -eq '' -and -not (Was-Called 'ok')) $r.Out
 

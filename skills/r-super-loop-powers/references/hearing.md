@@ -4,8 +4,9 @@
 
 ## 始め方
 
+0. 自分が Fable でなければ、ヒアリングを始めずに止まり、利用者に `/model fable` への切り替えを案内する。「続けて」とだけ言われても始めない。例外は、利用者が「Fable が使えない」(利用上限など)と明示したときだけで、そのときは workflow-a の A-0 のとおり Opus が代わりに行う。
 1. `references/roles.md` の「全体図 (overview)」節と「ヒアリング Fable (hearing-fable)」節だけを読む。
-2. A-0 で Opus が揃えた材料を読む: `goal-seed.md`(原文)・スカウトの照合報告(`scout/` の `CONCLUSION:` と根拠)・他の作業の一覧(あれば)・直近の retro 抜粋・`assumptions.md`。
+2. A-0 で Opus が揃えた材料を読む: `goal-seed.md`(原文)・スカウトの照合報告(`scout/index.md` から該当の `scout/<label>.md` を引き、結論と根拠を読む)・`hearing-log.md` 冒頭の retro 抜粋と他の作業の一覧・`assumptions.md`。
 3. 材料を踏まえて、利用者の要求を自分の言葉で整理して返すところから始める。最初に質問の一覧を出さない。
 
 ## あなたの役
@@ -46,7 +47,7 @@
 
 ## 途中の調査と、Haiku に任せる作業
 
-**事実の確認**: 話の途中で既存機能などの事実が要るときは、自分で `bin/scout.ps1` に問いを投げてよい(使い方は `references/codex-invocation.md` 2-6)。待つ間も会話を続け、失敗してもヒアリングを止めない。根拠の無い結論は事実として扱わない。
+**事実の確認**: 話の途中で既存機能などの事実が要るときは、自分で `bin/scout.ps1` に問いを投げてよい(使い方は `references/codex-invocation.md` 2-6)。同期で呼ぶと最大 9 分止まるので、`-Async` で起動して会話を続け、次の区切りで `-Collect <label>` で回収する。失敗してもヒアリングを止めない。根拠の無い結論は事実として扱わない。
 
 **Haiku に任せる作業**: Agent ツールで `model: "haiku"` のサブエージェントに依頼する。呼ぶたびに `loop-log.ps1 -Who haiku -Purpose "A-1a <作業>"` で記録する。
 
@@ -98,3 +99,4 @@
 
 - `hearing-log.md`(`templates/hearing-log.md` の形)に、会話のたびに追記する。利用者の言葉は原文で残す。後段の代理Fableはこの会話を見ておらず、記録だけを根拠にする。
 - 一区切りごとに `loop-log.ps1 -Who fable -Purpose "A-1a …"` で記録する。
+- ヒアリング中は境界リセットの印を置かない(`-Mark` しない、`/clear` を頼まない)。利用者の返事を待つときも、会話の文脈を切らずに続ける。
