@@ -93,6 +93,10 @@ $hr = Get-Text (Join-Path $tpl 'human-review-report.md')
 Check 'tpl-goal-frame-concerns' ($gf -match '(?m)^## 運用で見る懸念' -and $gf -match '10 分') 'goal-frame concerns section'
 Check 'tpl-hearing-log-direct' ($hl -match '(?m)^## 結論' -and $hl -match '整理して返した内容' -and $hl -notmatch '過去の不満・避けたい体験') 'hearing-log template'
 Check 'tpl-report-concerns' ($hr -match '運用で見る懸念') 'human report lists concerns'
+# v0.12: project design document template (written by the surveyor, saved by design-doc.ps1).
+$dd = Get-Text (Join-Path $tpl 'design-doc.md')
+Check 'tpl-design-doc-sections' ($dd -match '(?m)^## 更新履歴' -and $dd -match '(?m)^## 0\. 構成' -and $dd -match '(?m)^### 0\.1 全体概要' -and $dd -match '(?m)^### 0\.2 主要な機能の流れ' -and $dd -match '(?m)^## 1\. 機能の地図' -and $dd -match '(?m)^## 2\. 取り組んだが足りない' -and $dd -match '(?m)^## 3\. 要望はあるが未着手' -and $dd -match '(?m)^## 4\. 運用で見る懸念') 'design-doc template sections'
+Check 'tpl-design-doc-vocab' ($dd -match 'できている / 一部 / 取り組んだが足りない / 進行中 / 未着手' -and $dd -match '\| 日時 \| ゴール \| 節目 \| 見たコミット \| 書き手 \|' -and $dd -match '\(推測\)') 'design-doc vocabulary'
 $cver = ((Get-Text (Join-Path $root '.codex-plugin\plugin.json')) | ConvertFrom-Json).version
 Check 'codex-version-0.1.2' ($cver -eq '0.1.2') "codex version=$cver"
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\sync-templates.ps1') -Mode Verify | Out-Null
