@@ -136,6 +136,17 @@ Check 'web-flag-reported' ($r.Out -match '(?m)^WEB: on') $r.Out
 $r = Invoke-Run $env1 'tpw' @('-Role', 'techpm', '-Web')
 Check 'web-flag-other-role' ((Get-Meta 'tpw').command -match 'web_search=') 'techpm -Web should pass the live key too'
 
+# v0.12: surveyor role (design document writer; read-only, medium, no web_search key).
+$r = Invoke-Run $env1 'sv' @('-Role', 'surveyor')
+$m = Get-Meta 'sv'
+Check 'surveyor-read-only-medium' ($r.Code -eq 0 -and $m.sandbox -eq 'read-only' -and $m.effort -eq 'medium') $r.Out
+$svPrompt = Get-Content -Raw -Encoding UTF8 (Join-Path $t 'runs\sv.prompt.txt')
+Check 'surveyor-brief' ($svPrompt -match 'ROLE: SURVEYOR' -and $svPrompt -match 'design document' -and $svPrompt -match 'do not write the update-history rows' -and $svPrompt -match 'Do not invoke process skills') 'surveyor brief'
+Check 'charter-surveyor-section' ($svPrompt -match '\(surveyor\)' -and $svPrompt -notmatch '\(scout\)') 'surveyor charter section'
+Check 'surveyor-no-web-key' ($m.command -notmatch 'web_search') $m.command
+$r = Invoke-Run $env1 'svh' @('-Role', 'surveyor', '-Effort', 'high')
+Check 'surveyor-effort-override' ((Get-Meta 'svh').effort -eq 'high') $r.Out
+
 Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
 Write-Output 'ALL PASS'

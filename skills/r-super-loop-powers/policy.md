@@ -65,6 +65,7 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 | 技術レビュー | Codex `gpt-6.1-sol` / `max` / read-only(`-Role reviewer`) | 実装に関与していない立場で、正しさ・アセスとの整合・技術リスク・検証の妥当性をレビューする(`TECH_REVIEW: OK / CONCERNS`) | **高信頼のB-5のみ** | 要件適合の判定(B-6のFableの仕事)、コード変更 |
 | 画像生成(Codex組み込み image_gen ツール) | Codex `gpt-6.1-sol` / `low` / read-only(`-Role grareco`) | グラフィックレコード(生成のみ。保存はOpusが回収) | マイルストーン毎(MVPは中間クローズ時、Checkpointは Learning)に呼び出し | 未承認状態を確定として描かない。APIキー・スクリプト経由の生成はしない |
 | スカウト | Codex `gpt-6.1-sol` / `medium` / read-only(`-Role scout`) | Opus の問いに、対象プロジェクト・ゴール文書(指示があれば Web)を読んで固定の型(問い / 結論 / 根拠 / 未確認)で答える | Opus が調べものを行うとき(どの工程でも)。`bin/scout.ps1` 経由で 1 回 1 問 | コード変更。設計提案・要件判定。問いの外の助言 |
+| 設計書役 | Codex `gpt-6.1-sol` / 作成 `high`・更新 `medium` / read-only(`-Role surveyor`) | 対象プロジェクトの設計書(全体概要・主要な機能の流れ・機能の地図と到達度・足りない理由)の全文を書く。Opus が保存する | A-0 と Checkpoint の Learning で `bin/design-doc.ps1` 経由。2 回失敗したら Opus が履歴行だけ代筆 | コード変更。設計・要件・優先順位の判断や提案。更新履歴の行 |
 
 各ロールの立場・受け渡し・決めること・決めないこと・判定のされ方は `references/roles.md`(ロール憲章)にまとめてある。各ロールへはその該当節を原文のまま配る(実装役: エージェント定義に埋め込み / codex: `codex-run.ps1` が差し込み / Fable: Opus が依頼文の冒頭に貼る)。この表と憲章が食い違う場合は、この表と SKILL.md が正。
 

@@ -32,6 +32,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 | Checkpoint受け入れ | Opus(評価パッケージ) | 人間 |
 | 振り返り・グラレコ | Opus・グラレコ | — |
 | 調査(どの段階でも) | スカウト(codex。問いに答える報告) | Opus(報告の採否。根拠の無い結論は事実として扱わない) |
+| 設計書(ゴールの最初と Checkpoint の振り返り後) | 設計書役(codex。設計書の全文を返す) | Opus(保存。型は design-doc.ps1 が機械で確かめる) |
 
 すべての担当に共通する原則:
 

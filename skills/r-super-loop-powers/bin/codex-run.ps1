@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   codex-run.ps1 -- launch one codex delegation and return immediately.
 
@@ -27,9 +27,9 @@ param(
     [string]$RunDir,
     # Who codex is in this delegation. Every role is read-only: implementation is
     # done by the Claude-side builder agent, so codex never needs to write.
-    [Parameter(Mandatory = $true)][ValidateSet('techpm', 'reviewer', 'grareco', 'scout')][string]$Role,
+    [Parameter(Mandatory = $true)][ValidateSet('techpm', 'reviewer', 'grareco', 'scout', 'surveyor')][string]$Role,
     [string]$Model,
-    # Empty = role default (techpm / reviewer: max, grareco: low, scout: medium).
+    # Empty = role default (techpm / reviewer: max, grareco: low, scout / surveyor: medium).
     [ValidateSet('', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra')][string]$Effort = '',
     # Turn codex's built-in web search on for this run. codex 0.160.0 has it on by
     # default (smoke note 2026-10-11), so the scout role turns it OFF unless -Web is
@@ -158,6 +158,24 @@ line number or a URL.
 == END ROLE ==
 
 '@
+    surveyor = @'
+== ROLE: SURVEYOR (design-doc writer, read-only) ==
+You write the project's design document (a map of what exists, how the main
+features flow through the components, how far each feature has got, and why the
+unfinished ones stopped) from the code, the existing docs and the goal records
+named in the task. You decide nothing about design, requirements or priorities
+and propose nothing: you record. Read the files; do not write from memory.
+Mark guesses with "(推測)" and give a source (file:line or document) for every
+"足りない" claim.
+When updating, start from the previous document, keep its section layout and
+rows, and change only what the listed git range and goal records change.
+The final message is the whole document in the template's section order and
+nothing else; do not write the update-history rows (the orchestrator's script
+adds them). Do not invoke process skills (brainstorming, writing-plans or
+similar).
+== END ROLE ==
+
+'@
 }
 
 # Documented effort ladders: Sol and Luna stop at max (no "ultra"). Sending ultra
@@ -259,7 +277,7 @@ if ($Label -notmatch '^[A-Za-z0-9._-]+$') { throw "Label must be [A-Za-z0-9._-]+
 $Sandbox = 'read-only'
 if (-not $Effort) {
     if ($Role -eq 'grareco') { $Effort = 'low' }
-    elseif ($Role -eq 'scout') { $Effort = 'medium' }
+    elseif ($Role -eq 'scout' -or $Role -eq 'surveyor') { $Effort = 'medium' }
     else { $Effort = 'max' }
 }
 
