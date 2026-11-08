@@ -160,11 +160,39 @@ $hearDoneProj = Join-Path $t 'heardoneproj'
 $hearDone = Join-Path $hearDoneProj 'docs\r-super-loop-powers\g1'
 New-Item -ItemType Directory -Path $hearDone -Force | Out-Null
 [IO.File]::WriteAllText((Join-Path $hearDone 'state.md'), "- phase: done`n- 担当: hearing-fable`n", $utf8)
+foreach ($hp in @($hearProj, $hearDoneProj)) {
+    $hearDesign = Join-Path $hp 'docs\r-super-loop-powers\design.md'
+    [IO.File]::WriteAllText($hearDesign, "# 設計書`n## 更新履歴`n| 2026-11-08 10:00 | g1 | A-0 | abc1234 | codex |`n", $utf8)
+}
 $stdinFile = Join-Path $t 'stdin.txt'
 
 $r = Invoke-Hook (New-Input $ja $hearProj) $judgeCapture
 $sent = if (Test-Path $stdinFile) { [IO.File]::ReadAllText($stdinFile, $utf8) } else { '' }
 Check 'judge-prompt-hearing' ($r.Out -eq '' -and $sent -match 'ヒアリング中' -and $sent -notmatch '\{\{MODE_NOTE\}\}') $sent
+
+# v0.12: during the hearing the design.md must carry this goal's A-0 row.
+$noDesignProj = Join-Path $t 'nodesignproj'
+$noDesignGoal = Join-Path $noDesignProj 'docs\r-super-loop-powers\g1'
+New-Item -ItemType Directory -Path $noDesignGoal -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $noDesignGoal 'state.md'), "- phase: goal-definition`n- 担当: hearing-fable`n", $utf8)
+Reset-Called
+$r = Invoke-Hook (New-Input $ja $noDesignProj) $judgeOk
+Check 'design-doc-missing-blocks' ($r.Code -eq 0 -and $r.Out -match '"decision"\s*:\s*"block"' -and $r.Out -match '設計書が未更新' -and $r.Out -match 'g1 の A-0' -and -not (Was-Called 'ok')) $r.Out
+Check 'design-doc-missing-logged' (@(Get-Content -Encoding UTF8 (Join-Path $noDesignGoal 'hook-log.md'))[-1] -match '\| BLOCK \| design-doc \| g1 A-0 missing') 'hook-log'
+[IO.File]::WriteAllText((Join-Path $noDesignProj 'docs\r-super-loop-powers\design.md'), "# 設計書`r`n## 更新履歴`r`n| 2026-11-08 10:00 | g1 | CP:1-x | abc1234 | codex |`r`n", (New-Object System.Text.UTF8Encoding($true)))
+$r = Invoke-Hook (New-Input $ja $noDesignProj) $judgeOk
+Check 'design-doc-wrong-tag-blocks' ($r.Out -match '設計書が未更新' -and -not (Was-Called 'ok')) $r.Out
+[IO.File]::AppendAllText((Join-Path $noDesignProj 'docs\r-super-loop-powers\design.md'), "| 2026-11-08 10:05 | g1 | A-0 | abc1234 | opus(代行: x) |`r`n", $utf8)
+Reset-Called
+$r = Invoke-Hook (New-Input $ja $noDesignProj) $judgeOk
+Check 'design-doc-row-crlf-passes' ($r.Out -eq '' -and (Was-Called 'ok')) $r.Out
+$r = Invoke-Hook (New-Input $ja $noDesignProj $true) $judgeOk
+Check 'design-doc-stop-hook-active-skips' ($r.Out -eq '') $r.Out
+Remove-Item (Join-Path $noDesignProj 'docs\r-super-loop-powers\design.md')
+[IO.File]::WriteAllText((Join-Path $noDesignGoal 'state.md'), "- phase: goal-definition`n- 担当: opus-main`n", $utf8)
+Reset-Called
+$r = Invoke-Hook (New-Input $ja $noDesignProj) $judgeOk
+Check 'design-doc-not-checked-outside-hearing' ($r.Out -eq '' -and (Was-Called 'ok')) $r.Out
 
 Remove-Item $stdinFile -ErrorAction SilentlyContinue
 $r = Invoke-Hook (New-Input $ja $proj) $judgeCapture

@@ -8,6 +8,8 @@
   orchestrator rewrites it; stop_hook_active=true means that rewrite already happened.
 
   Checks, cheapest first:
+    0. While the Fable hearing runs ("担当: hearing-fable"), docs/r-super-loop-powers/design.md
+       must carry this goal's A-0 history row; if not, block with a fixed reason (no judge).
     1. Japanese ratio J / (J + W): J = kana/kanji characters, W = English words, after
        code, URLs and paths are removed. English counts per word so a Japanese sentence
        full of tool names does not fail.
@@ -115,6 +117,10 @@ function Send-Block([string]$Why, [bool]$Hearing = $false) {
     Write-StdoutUtf8 (@{ decision = 'block'; reason = $reason } | ConvertTo-Json -Compress)
 }
 
+function Send-BlockRaw([string]$Reason) {
+    Write-StdoutUtf8 (@{ decision = 'block'; reason = $Reason } | ConvertTo-Json -Compress)
+}
+
 # ---- main ----
 if ($env:RSLP_HOOK_CHILD -eq '1') { exit 0 }
 try { $hookInput = Read-StdinUtf8 | ConvertFrom-Json } catch { exit 0 }
@@ -127,6 +133,25 @@ if (-not $cwd) { $cwd = (Get-Location).Path }
 $goalDir = $null
 try { $goalDir = Find-GoalDir $cwd } catch { exit 0 }
 if (-not $goalDir) { exit 0 }
+
+# v0.12: the hearing hand-off needs this goal's A-0 row in design.md. Unreadable state.md or
+# design.md (an exception) skips the check; a missing design.md means the row is missing.
+$missingA0 = $null
+try {
+    $stateText0 = [System.IO.File]::ReadAllText((Join-Path $goalDir 'state.md'), $Utf8)
+    if ($stateText0 -match '(?m)^\s*-\s*担当:\s*hearing-fable\b') {
+        $slug = Split-Path -Leaf $goalDir
+        $designPath = Join-Path (Split-Path -Parent $goalDir) 'design.md'
+        $designText = ''
+        if (Test-Path -LiteralPath $designPath) { $designText = [System.IO.File]::ReadAllText($designPath, $Utf8) }
+        if ($designText -notmatch ('(?m)^\|[^|]*\|\s*' + [regex]::Escape($slug) + '\s*\|\s*A-0\s*\|')) { $missingA0 = $slug }
+    }
+} catch { $missingA0 = $null }
+if ($missingA0) {
+    Send-BlockRaw "[r-super-loop-powers] 設計書が未更新です: docs/r-super-loop-powers/design.md に $missingA0 の A-0 の行がありません。bin/design-doc.ps1 を実行してから返答してください"
+    Write-HookLogLine $goalDir 'BLOCK' 'design-doc' "$missingA0 A-0 missing"
+    exit 0
+}
 
 $ratioText = '-'
 try {
