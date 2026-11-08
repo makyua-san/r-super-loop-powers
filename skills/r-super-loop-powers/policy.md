@@ -88,6 +88,11 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 
 1. 高信頼強度のB-5で、そのマイルストーンの全タスクの `impl-check.ps1` が `STATUS: OK` になった後(**マイルストーンごとに1回**。ラベル `m<n>-review`。CONCERNSで再委譲した場合は解消後に再レビュー `m<n>-review-2` …)
 
+## 設計書役を呼ぶ場面(これ以外では呼ばない)
+
+1. A-0: Goal Seed 保存の直後、照合スカウトの前(`design-doc.ps1 -Milestone A-0`。ゴールごとに 1 回)
+2. Learning: retro の後、グラレコの前(`design-doc.ps1 -Milestone CP`。MVP は Checkpoint ごと、高信頼はマイルストーンごと)
+
 ## Fableを原則呼ばない場面
 
 - Brainstorming / Spec / Plan の**本文作成**(MVPの代理ブレストでもFableは回答・承認のみ。本文はOpusが書く)
@@ -107,9 +112,9 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 | PL-004 | Evidence first | 承認要求には検証証拠・残存未知リスト・未解決事項を必ず含める。推測だけでPASSを求めない |
 | PL-005 | Human after AI gate | 人間受け入れはFable PASS後に行う(MVPはCheckpoint到達時のみ) |
 | PL-006 | Human rejection routing | Human REJECTはFableへ戻し、戻り工程をFableが決める |
-| PL-007 | Budget observability | fable / codex-techpm / codex-review / codex-grareco / codex-scout / sonnet-builder の呼び出し(代理FableとのSendMessage往復を含む)を call-log.md に記録し、Opus:Fable ≈ 5:1 を目安に振り返る。MVPのヒアリング・代理ブレスト期(A-1a〜A-4)はfable往復が構造的に増えるため、目安は**ワークフローB以降**に適用する |
+| PL-007 | Budget observability | fable / codex-techpm / codex-review / codex-grareco / codex-scout / codex-surveyor / sonnet-builder の呼び出し(代理FableとのSendMessage往復を含む)を call-log.md に記録し、Opus:Fable ≈ 5:1 を目安に振り返る。MVPのヒアリング・代理ブレスト期(A-1a〜A-4)はfable往復が構造的に増えるため、目安は**ワークフローB以降**に適用する |
 | PL-008 | No forced ratio | 比率は目標であり、品質や安全に必要なFable呼び出しを禁止しない |
-| PL-009 | Context minimization | Fableへは goal-frame + 対象文書 + 仮定台帳の関連部分(+ 必要ならhearing-logの関連部分)のみを渡す。全コード・全会話を常時ロードしない。代理Fableは自インスタンス内の文脈保持のみ許容。ヒアリングFableは対象コードを自分で読まず、事実はスカウトに問う |
+| PL-009 | Context minimization | Fableへは goal-frame + 対象文書 + 仮定台帳の関連部分(+ 必要ならhearing-logの関連部分)のみを渡す。全コード・全会話を常時ロードしない。代理Fableは自インスタンス内の文脈保持のみ許容。ヒアリングFableは対象コードを自分で読まず、事実はスカウトに問う。設計書(`design.md`)は文書なので読んでよい |
 | PL-010 | Human cognitive load | 人間向け成果物は、ゴール → 結果 → 証拠 → リスク → 確認手順の順で構造化し、確定事項と仮説による決定を区別する(判断の内訳) |
 | PL-011 | Delegation is verified, not assumed | 委譲の成否は機械判定でのみ決める: codex は `bin/codex-status.ps1`、実装役は `bin/impl-check.ps1` の `STATUS: OK`。プロセスの消滅・自己検証報告の存在・報告本文の印象を成功の根拠にしない。`OK` 以外は不合格として扱い、実装済みとして下流工程(submission / ゲート / コミット)へ進めない。codex の呼び出し規約は `references/codex-invocation.md`、実装役は SKILL.md B-2 |
 
@@ -130,6 +135,6 @@ AIは未知に対して可能な限り自律的に仮説を立て、人間が評
 
 ## 観測
 
-- call-log.md 形式: `YYYY-MM-DD HH:MM | fable|codex-techpm|codex-review|codex-grareco|codex-scout|sonnet-builder | フェーズ | 目的`(1呼び出し1行。代理FableとのSendMessage往復も1往復1行)
+- call-log.md 形式: `YYYY-MM-DD HH:MM | fable|codex-techpm|codex-review|codex-grareco|codex-scout|codex-surveyor|sonnet-builder | フェーズ | 目的`(1呼び出し1行。代理FableとのSendMessage往復も1往復1行)
 - Opus 5.5メインセッション自身の消費は記録対象外(常駐のため)
 - Retrospective 作成時に、呼び出し比率(5:1目安・ワークフローB以降)に加えて、ループ回数・主要フェーズ所要時間(call-logの時刻から概算)・発見された未知を記載する。ハード制限にしない(PL-008)

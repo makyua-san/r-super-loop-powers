@@ -66,6 +66,7 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 | 技術レビュー(高信頼のみ) | codex `gpt-6.1-sol` / max / read-only | B-5の技術レビュー。要件適合はB-6のゲートFableが判定 |
 | グラレコ | codex `gpt-6.1-sol` / low / read-only | 画像生成のみ。Opus が generated_images から回収 |
 | スカウト | codex `gpt-6.1-sol` / medium / read-only | Opus の調べもの(リポジトリ・ゴール文書・Web)。`bin/scout.ps1` が起動から保存(`scout/`)・記帳まで 1 回で行い、Opus には結論 5 行だけが入る。失敗してもループは止めない(Opus が代行) |
+| 設計書役 | codex gpt-6.1-sol / 作成 high・更新 medium / read-only | プロジェクトの設計書(docs/r-super-loop-powers/design.md)を A-0 と Checkpoint 後に書く。bin/design-doc.ps1 が起動から保存・記帳まで行い、行が無いと loop-log が遷移を拒否する |
 
 各役の立場・決めること・決めないことは `skills/r-super-loop-powers/references/roles.md`(ロール憲章)が正本。実装役には `scripts/sync-roles.ps1` でエージェント定義へ同期し、codex には `codex-run.ps1` が、Fable には Opus が配る。スカウトの `-Web` は codex の組み込み Web 検索を使う(codex-cli 0.160.0 では Web 検索が既定で有効なので、`-Web` 無しの scout は `web_search="disabled"` で止める: `docs/superpowers/notes/2026-10-11-v0.10-smoke.md` §1)。
 
@@ -124,13 +125,13 @@ Stop フックは、ゴールループ中(`docs/r-super-loop-powers/*/state.md` 
 ## リポジトリ構成
 
 - `.claude-plugin/` — Claude版プラグインマニフェスト・マーケットプレイス定義
-- `skills/r-super-loop-powers/` — Claude版 SKILL.md(共通: 起動時チェック・契約・境界リセット) / policy.md(運用ポリシー) / templates/(10種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check・記帳 loop-log・再開パケット resume-packet・スカウト scout) / `schemas/`(実装報告スキーマ) / `references/`(ワークフローA `workflow-a.md`・ワークフローB `workflow-b.md`・codex呼び出し規約・ロール憲章 roles.md)
+- `skills/r-super-loop-powers/` — Claude版 SKILL.md(共通: 起動時チェック・契約・境界リセット) / policy.md(運用ポリシー) / templates/(11種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check・記帳 loop-log・再開パケット resume-packet・スカウト scout・設計書 design-doc) / `schemas/`(実装報告スキーマ) / `references/`(ワークフローA `workflow-a.md`・ワークフローB `workflow-b.md`・codex呼び出し規約・ロール憲章 roles.md)
 - `agents/` — Claude版の実装役エージェント定義(`builder.md`、Sonnet 5.5)
 - `hooks/` — Claude版のフック(`hooks.json` / 再開注入 `resume-inject.ps1` / 文脈メーター `context-meter.ps1` / 人間向け応答チェック `human-message-check.ps1` + `judge-prompt.md` / 共通部 `hook-common.ps1`)
 - `tests/` — `bin/`・`hooks/`・`scripts/sync-roles.ps1`・SKILL の配置のテスト(`powershell -File tests\<名>.tests.ps1`)
 - `.codex-plugin/` — Codex版プラグインマニフェスト(`plugin.json`)
 - `.agents/plugins/` — Codex版マーケットプレイス定義(`marketplace.json`)
-- `skills-codex/r-super-loop-powers/` — Codex版 SKILL.md / policy.md / schemas/(ゲート判定・エスカレーション判定の構造化出力スキーマ) / templates/(10種、`skills/` からの複写)
+- `skills-codex/r-super-loop-powers/` — Codex版 SKILL.md / policy.md / schemas/(ゲート判定・エスカレーション判定の構造化出力スキーマ) / templates/(11種、`skills/` からの複写)
 - `scripts/` — `sync-templates.ps1`(templatesの複写・一致検証) / `sync-roles.ps1`(ロール憲章を実装役の定義へ同期・一致検証)
 - `docs/superpowers/specs/` — 設計仕様書
 - `docs/superpowers/plans/` — 実装計画

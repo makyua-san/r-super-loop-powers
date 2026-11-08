@@ -30,7 +30,6 @@ $policyText = Get-Text (Join-Path $skillDir 'policy.md')
 Check 'policy-scout' ($policyText -match '\| スカウト \| Codex `gpt-6\.1-sol` / `medium` / read-only\(`-Role scout`\)' -and $policyText -match 'codex-scout') 'policy.md scout row / vocabulary'
 $invText = Get-Text (Join-Path $skillDir 'references\codex-invocation.md')
 Check 'invocation-scout' ($invText -match 'scout\.ps1' -and $invText -match '-Web') 'codex-invocation.md scout'
-Check 'invocation-four-scripts' ($invText -match '4本のスクリプト' -and $invText -notmatch '3本のスクリプト') 'codex-invocation.md still says three scripts'
 Check 'skill-roles-jit' ($s -match 'roles\.md' -and $s -notmatch 'policy\.md` と `references/roles\.md`\(ロール憲章\)を読む') 'roles.md must be read just in time'
 Check 'skill-failures-only' ($s -match 'FAIL\\?\|ALL PASS') 'shell results: failures only'
 Check 'skill-no-image-read' ($s -match 'SendUserFile') 'image rule'
@@ -103,6 +102,17 @@ Check 'codex-version-0.1.2' ($cver -eq '0.1.2') "codex version=$cver"
 Check 'templates-in-sync' ($LASTEXITCODE -eq 0) 'sync-templates Verify failed'
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\sync-roles.ps1') -Mode Verify | Out-Null
 Check 'roles-in-sync' ($LASTEXITCODE -eq 0) 'sync-roles Verify failed'
+
+# v0.12: the project design document (design-doc.ps1 / surveyor) runs through the process docs.
+Check 'a-design-doc' ($a -match 'design-doc\.ps1' -and $a -match '-Milestone A-0' -and $a -match '直列' -and $a -match '-Fallback' -and $a -match '衝突' -and $a -match '初回は十数分') 'workflow-a A-0 design-doc steps'
+Check 'a-close-commits-docs' ($a -match 'phase: done' -and $a -match 'docs/r-super-loop-powers/` の未コミット分') 'closing route commits the goal records'
+Check 'b-design-doc' ($b -match '1\.5' -and $b -match 'design-doc\.ps1' -and $b -match '-Milestone CP' -and $b -match '未コミット分') 'workflow-b Learning 1.5 and the commit before 3'
+Check 'hearing-design-doc' ($h -match 'design\.md' -and $h -match '頼み直し' -and $h -match '設計書は文書なので') 'hearing.md reads the design doc rows and asks the re-ask question'
+Check 'invocation-five-scripts' ($invText -match '5本のスクリプト' -and $invText -notmatch '4本のスクリプト' -and $invText -match '5ロール' -and $invText -match 'design-doc\.ps1' -and $invText -match '### 2-7') 'codex-invocation.md design-doc'
+Check 'policy-surveyor' ($policyText -match '\| 設計書役 \| Codex `gpt-6\.1-sol` / 作成 `high`・更新 `medium` / read-only\(`-Role surveyor`\)' -and $policyText -match '(?m)^## 設計書役を呼ぶ場面' -and $policyText -match 'codex-surveyor') 'policy.md surveyor row / call sites'
+Check 'policy-pl009-design' ($policyText -match 'PL-009.*設計書.*読んでよい') 'PL-009 allows the design doc'
+Check 'tpl-goal-frame-relation' ($gf -match '既存機能との関係') 'goal-frame knows the relation to existing features'
+Check 'readme-surveyor' ($readme -match '設計書役' -and $readme -match 'design-doc') 'README role table / repo layout'
 
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
 Write-Output 'ALL PASS'

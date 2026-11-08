@@ -1,6 +1,6 @@
 # ワークフローA: Goal Definition(A-0〜A-8)
 
-SKILL.md(共通)の起動時チェック 9 から読まれる。state.md の phase が `goal-definition` の間(新規ゴールを含む)だけ使う。共通の規則(起動時チェック・ディレクトリ契約・記帳・ゲート保護・Fable 共通契約・境界リセット・読むもの)は SKILL.md にある。A-1a〜A-1b はメインセッションの Fable が利用者と直接話す(`/model` の切り替えは利用者が行う)。A-0 の終わりから A-1b の確定まで(ヒアリング中)は境界リセットの印を置かず、「待ち」を書くだけにする。A-2〜A-4 は代理Fable(SendMessage 継続)が生きているので、A-8 の承認まで境界リセットをしない(人間待ちでも「待ち」を書くだけで印は置かない)。
+SKILL.md(共通)の起動時チェック 9 から読まれる。state.md の phase が `goal-definition` の間(新規ゴールを含む)だけ使う。共通の規則(起動時チェック・ディレクトリ契約・記帳・ゲート保護・Fable 共通契約・境界リセット・読むもの)は SKILL.md にある。A-1a〜A-1b はメインセッションの Fable が利用者と直接話す(`/model` の切り替えは利用者が行う)。A-0 の終わりから A-1b の確定まで(ヒアリング中)は境界リセットの印を置かず、「待ち」を書くだけにする。A-2〜A-4 は代理Fable(SendMessage 継続)が生きているので、A-8 の承認まで境界リセットをしない(人間待ちでも「待ち」を書くだけで印は置かない)。設計書(`docs/r-super-loop-powers/design.md`)は A-0 で Codex が作成・更新し、行が無いと `loop-log.ps1 -SetOwner hearing-fable` が拒否される。
 
 ## 技術PM(Codex)共通契約
 
@@ -35,16 +35,22 @@ codex の起動・完了判定・STATUS の読み方は `references/codex-invoca
 ユーザーの「やりたいこと」を原文のまま `goal-seed.md` に保存する。要約・整形しない。`<goal-slug>` を決め、ディレクトリと state.md(phase: goal-definition, 強度: 未確定)、空の call-log.md(`loop-log.ps1` が初回の記録時に作るので省略可)、`templates/assumptions.md` の形式で空の仮定台帳、`templates/hearing-log.md` の形式で空のヒアリング記録を作成する。
 
 続けて、ヒアリング Fable に渡す材料を揃える(Fable の消費を増やさないため、ここは Opus が行う):
-1. **照合**: `bin/scout.ps1` に「goal-seed に関係する既存機能・被り・拡張か新規かの候補」を問う。失敗してもループを止めない。
-2. **retro 抜粋**: 直近の `docs/r-super-loop-powers/*/milestones/*/retro.md` を新しい順に最大3件読み、要点を `hearing-log.md` の冒頭(ラウンドの前)に書く。
-3. **他の作業の一覧**: Linear の接続があれば、利用者の進行中の課題を読み取りで一覧にして同じ場所に書く。接続が無い・失敗したときはその旨を書く。
-
-`loop-log.ps1 -SetOwner hearing-fable -SetWait "/model fable への切り替え"` を実行し、利用者に「次はヒアリングです。`/model fable` に切り替えて『続けて』と送ってください」と案内して止まる。Fable が使えない(利用上限など)と利用者が明示したときだけ、Opus が `references/hearing.md` に従って代わりに行い、hearing-log.md にその旨を書く。
+1. **Goal Seed 保存**: 上の保存(原文のまま `goal-seed.md`、ディレクトリ・state.md・仮定台帳・ヒアリング記録)を先に済ませる。2 以降はこの後に行う。
+2. **設計書(Codex 設計書役)**: プロジェクトの設計書 `docs/r-super-loop-powers/design.md` を作成・更新する。利用者に「設計書を作っています(初回は十数分、長いと 1 時間)」と一言伝えてから呼ぶ。Bash ツールの `timeout` を 600000 にする:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\design-doc.ps1" `
+     -GoalDir "<goal-dir>" -WorkDir "<対象プロジェクトのルート>" -Milestone A-0
+   ```
+   `STATUS: OK` なら先へ進む(`MODE: unchanged` は、前回の Codex の行以降に変わったのがゴール記録と設計書だけだった印。変更が無ければ Codex を呼ばず履歴行だけ足される)。`STATUS: RUNNING` / `STALLED` は 9 分で終わらなかったので、`NEXT:` の `-Collect <label>` で回収する。待つ間に 4 を進めてよい。3 は設計書を読むので直列で待つ。
+   `INCOMPLETE / FAILED / SUSPECT / LOST` は同じ依頼で 1 回だけ再実行する。`TIMEOUT` は `NEXT:` のとおり effort を 1 段下げて 1 回だけ再実行する。2 回目も `OK` でなければ `-Fallback -Reason "<理由>"` で Opus が履歴行だけ代筆する(設計書が既にあれば本文は書き換えず、無ければ雛形から作る)。並行ゴールで `design.md` が衝突したら、どちらかを採って合流してよい(次の A-0 で作り直す)。
+3. **照合**: `bin/scout.ps1` に「`docs/r-super-loop-powers/design.md` の 1〜3 章を先に読み、goal-seed に関係する機能の行(到達度)・『取り組んだが足りない』の該当・『要望はあるが未着手』の該当を挙げよ。見つからなければコードから探せ。被り・拡張か新規かの候補も挙げよ」を問う。失敗してもループを止めない。
+4. **retro 抜粋 + 他の作業の一覧**: 直近の `docs/r-super-loop-powers/*/milestones/*/retro.md` を新しい順に最大3件読み、要点を `hearing-log.md` の冒頭(ラウンドの前)に書く。続けて Linear の接続があれば、利用者の進行中の課題を読み取りで一覧にして同じ場所に書く。接続が無い・失敗したときはその旨を書く。
+5. **ヒアリングへの引き渡し**: `loop-log.ps1 -SetOwner hearing-fable -SetWait "/model fable への切り替え"` を実行し、利用者に「次はヒアリングです。`/model fable` に切り替えて『続けて』と送ってください」と案内して止まる。設計書の行(`| <goal-slug> | A-0 |`)が無ければ `STATUS: REFUSED` で拒否されるので、2 に戻る。Fable が使えない(利用上限など)と利用者が明示したときだけ、Opus が `references/hearing.md` に従って代わりに行い、hearing-log.md にその旨を書く。
 
 **A-1a ヒアリング(ヒアリング Fable・直接会話)**
 メインセッションの Fable が `references/hearing.md` に従い、利用者と直接話す。Opus は中継しない。終わりに hearing-log.md の `## 結論` を書く。
 
-**やらないと決まったとき**: `## 結論` が「やらない / 後回し / 合流」なら Goal Frame を作らずに閉じる。`loop-log.ps1 -SetPhase done -SetOwner opus-main -Clear 待ち` を実行し(state.md は `phase: done` になり、フックと再開の対象から外れる)、利用者に `/model opus` への切り替えを案内する。retro は作らない。rb のタスクから始まったゴールなら、結論を rb に報告する。
+**やらないと決まったとき**: `## 結論` が「やらない / 後回し / 合流」なら Goal Frame を作らずに閉じる。`loop-log.ps1 -SetPhase done -SetOwner opus-main -Clear 待ち` を実行し(state.md は `phase: done` になり、フックと再開の対象から外れる)。続けて `docs/r-super-loop-powers/` の未コミット分(ゴール記録と A-0 の設計書)を Opus がコミットする。設計書は更新しない。その後、利用者に `/model opus` への切り替えを案内する。retro は作らない。rb のタスクから始まったゴールなら、結論を rb に報告する。
 
 **A-1b Goal Frame(ヒアリング Fable)**
 - **MVP**: ヒアリング Fable がそのまま `templates/goal-frame.md` で作る。

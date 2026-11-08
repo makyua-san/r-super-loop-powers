@@ -1,8 +1,8 @@
 # codex委譲 実行規約(Claude版)
 
-SKILL.md の起動時チェック・「読むものと読まないもの」(スカウト)・A-2〜A-4(技術PM)・B-5(高信頼の技術レビュー)・Learning(グラレコ)から参照される。**codex を呼ぶときは必ずこの規約に従う。** codex は4ロール(techpm / reviewer / grareco / scout)すべて**読み取り専用**で、実装はしない(実装役は Sonnet サブエージェント。SKILL.md B-2)。
+SKILL.md の起動時チェック・「読むものと読まないもの」(スカウト)・A-2〜A-4(技術PM)・B-5(高信頼の技術レビュー)・Learning(グラレコ)から参照される。**codex を呼ぶときは必ずこの規約に従う。** codex は5ロール(techpm / reviewer / grareco / scout / surveyor)すべて**読み取り専用**で、実装はしない(実装役は Sonnet サブエージェント。SKILL.md B-2)。
 
-このディレクトリの `bin/` にある4本のスクリプトが規約の実体である。**PowerShellを自分で組み立てて codex を直接叩かない。** 手書きの起動コマンドは、`< /dev/null` の欠落・POSIXパス・終了確認の省略といった失敗を毎回作り直すからである(下記「実測された失敗」参照)。
+このディレクトリの `bin/` にある5本のスクリプトが規約の実体である。**PowerShellを自分で組み立てて codex を直接叩かない。** 手書きの起動コマンドは、`< /dev/null` の欠落・POSIXパス・終了確認の省略といった失敗を毎回作り直すからである(下記「実測された失敗」参照)。
 
 | スクリプト | 役割 | 呼ぶ回数 |
 |---|---|---|
@@ -10,6 +10,7 @@ SKILL.md の起動時チェック・「読むものと読まないもの」(ス�
 | `bin/codex-run.ps1` | 委譲を1件起動して**即座に戻る**(分離プロセスで走り続ける) | 委譲ごとに1回 |
 | `bin/codex-status.ps1` | その委譲が**実際にどうなったか**を機械的に判定する | 完了するまで繰り返し |
 | `bin/scout.ps1` | スカウト(調査)を起動から保存・記帳まで**1 回で**行うまとめ役(2-6)。scout ロールはこれ経由でだけ呼ぶ | 問いごとに 1 回 |
+| `bin/design-doc.ps1` | 設計書の作成・更新を起動から保存・記帳まで 1 回で行う(2-7)。surveyor ロールはこれ経由でだけ呼ぶ | 節目ごとに 1 回 |
 
 ---
 
@@ -130,6 +131,36 @@ Bash ツールの `timeout` を 600000 にして呼ぶ。中で `codex-run.ps1 -
 - `-Web`: codex の組み込み Web 検索を使わせる。codex 0.160.0 は **Web 検索が既定で有効**なので(スモークノート 2026-10-11 §1)、scout は `-Web` 無しで `web_search="disabled"`、ありで `web_search="live"` を `codex-run.ps1` が渡す(他ロールには何も渡さない)。read-only サンドボックスでも Web 検索は動く。報告の `## 未確認` が `WEB_UNAVAILABLE` なら `WEB: unavailable` が出るので、その Web 調査は Opus が行う
 - 根拠の無い結論は事実として扱わない。必要な根拠だけ `REPORT:` のファイルを Grep / 行範囲で見る(全文は読まない)
 
+
+### 2-7. 設計書 — `bin/design-doc.ps1`
+
+プロジェクトの設計書 `docs/r-super-loop-powers/design.md` を、Codex の surveyor ロール(read-only)に作成・更新させる。起動・待機・節の検査・保存・履歴行の追記・記帳(`loop-log.ps1 -Who codex-surveyor`)を 1 回で行う。節目は `-Milestone` で指定する(`A-0` はワークフローA の A-0、`CP` は Learning で、state.md の `milestone` の値を `CP:<milestone>` に展開して履歴行に残す)。
+
+```powershell
+# 作成・更新(effort は既定: 作成 high・更新 medium。-Effort で上書き、-WaitMinutes は既定 9)
+powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\design-doc.ps1" `
+  -GoalDir "<goal-dir>" -WorkDir "<対象プロジェクトのルート>" -Milestone A-0|CP [-Effort medium] [-WaitMinutes 9]
+# 9 分で終わらなかった(RUNNING / STALLED)ときの回収
+... \bin\design-doc.ps1 -GoalDir "<goal-dir>" -WorkDir "<対象プロジェクトのルート>" -Collect <label>
+# Codex が 2 回続けて OK にならなかったときの Opus 代筆(履歴行だけ)
+... \bin\design-doc.ps1 -GoalDir "<goal-dir>" -WorkDir "<対象プロジェクトのルート>" -Milestone A-0|CP -Fallback -Reason "<理由>"
+```
+
+Bash ツールの `timeout` を 600000 にして呼ぶ。作成は 30 分、更新は 15 分が codex の上限で、作成は十数分から 1 時間かかる。
+
+| 行 | 意味 |
+|---|---|
+| `STATUS: OK` | `LABEL:`・`MODE:`(`create` / `update` / `unchanged` / `fallback`)・`DESIGN_DOC:`(保存先)・`FEATURES:`(機能の地図の行数)・`INSUFFICIENT:`(『取り組んだが足りない』の件数)・`HISTORY:`(履歴行の数)・`ELAPSED_MIN:` |
+| `WARN: design.md is N KB (> 40 KB)` | 設計書が大きい。次の更新で絞らせる(その場では止めない) |
+| `STATUS: INCOMPLETE` | 必須の 6 節(`更新履歴`・`構成`・`機能の地図`・`取り組んだが足りない`・`要望はあるが未着手`・`運用で見る懸念`)のどれかが無い。`RAW:` に本文。`design.md` は置き換わらない |
+| `STATUS: RUNNING` / `STALLED` | 9 分で終わらなかった。`NEXT:` の `-Collect <label>` で回収する |
+| それ以外(`FAILED` / `SUSPECT` / `LOST` / `TIMEOUT`) | `codex-status.ps1` の判定をそのまま中継(`REASON:` と `NEXT:` 付き)。保存も記帳もされていない |
+
+- **前回のコピー**: 置き換え前の設計書は `<goal-dir>\codex-runs\<label>.design-prev.md` に残る。
+- **履歴行はスクリプトが足す**: `| 日時 | <goal-slug> | <節目> | <SHA> | codex |`。Codex が書いた履歴行は捨てられる。
+- **`unchanged`(A-0 だけ)**: 履歴の最後の書き手が `codex` の行を基準に、その SHA 以降の差分が `docs/r-super-loop-powers/<その行のゴール>/` と `design.md` だけで、現在のゴール記録と `design.md` 以外に未コミットの変更も無いとき、Codex を呼ばずに書き手 `unchanged` の行だけを足す。`CP` は常に更新する。
+- **再実行の `NEXT:`**: `TIMEOUT` は effort を 1 段下げた同じコマンド、`INCOMPLETE` / `FAILED` / `SUSPECT` / `LOST` は同じコマンド、`RUNNING` / `STALLED` は `-Collect`。再実行は 1 回だけ。
+- **`-Fallback`**: 2 回目も `OK` でなければ、`-Fallback -Reason "<理由>"` で Opus が履歴行だけを代筆する(書き手は `opus(代行: <理由>)`。設計書が既にあれば本文は書き換えず、無ければ雛形から作る)。
 ---
 
 ## 3. 既知の環境問題
@@ -151,6 +182,7 @@ Bash ツールの `timeout` を 600000 にして呼ぶ。中で `codex-run.ps1 -
 - **reviewer**: SKILL.md B-5(高信頼)に列挙した入力。特に委譲前の HEAD と各委譲の `impl-check.ps1` の `CHANGED_FILES_ACTUAL:` 行を渡し、`git diff <base>` と `git status --porcelain --untracked-files=all` で実際の変更を見させる(未追跡の新規ファイルは `git diff` に出ないので直接読ませる)
 - **grareco**: `templates/grareco-prompt.md`
 - **scout**: `scout.ps1` が問い・調べる範囲・報告の型を組む。Opus は問いだけ書く(何を知りたいか・どこを見ればよさそうか)
+- **surveyor**: `design-doc.ps1` が目的・モード・材料・テンプレートを組む。Opus は節目(`A-0` | `CP`)だけ指定する
 
 ---
 
