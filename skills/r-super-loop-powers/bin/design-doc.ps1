@@ -8,8 +8,8 @@
     start     -GoalDir -WorkDir -Milestone <A-0|CP> [-Effort] [-WaitMinutes 9] [-Label] [-EnvFile]
               no design.md      -> create (-Effort high unless given, 30 min)
               design.md exists  -> update (15 min, role default effort unless given)
-                                   or unchanged (last row by codex at HEAD, tree clean outside
-                                   the goal dir): no codex, only a history row
+                                   or unchanged (A-0 only; nothing new since the last codex row,
+                                   see Test-Unchanged): no codex, only a history row
     collect   -GoalDir -Collect <label> [-WaitMinutes 9]
     fallback  -GoalDir -WorkDir -Milestone <A-0|CP> -Fallback -Reason <text>
               (Opus writes the row after codex failed twice; body from the template if missing)
@@ -145,9 +145,16 @@ function Get-HeadSha([string]$Dir) {
     if ($code -ne 0 -or $s.Count -eq 0 -or -not ([string]$s[0]).Trim()) { return '-' }
     return ([string]$s[0]).Trim()
 }
-function Test-SameSha([string]$A, [string]$B) {
-    if ($A -notmatch '^[0-9a-f]{4,}$' -or $B -notmatch '^[0-9a-f]{4,}$') { return $false }
-    return ($A.StartsWith($B) -or $B.StartsWith($A))
+# Output lines of a git command in $Dir; $null when git is missing or exits non-zero.
+function Get-GitLines([string]$Dir, [string[]]$GitArgs) {
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = @(& git -c core.quotepath=false -C $Dir @GitArgs 2>$null | ForEach-Object { [string]$_ })
+        $code = $LASTEXITCODE
+    } catch { return $null } finally { $ErrorActionPreference = $saved }
+    if ($code -ne 0) { return $null }
+    return , $lines
 }
 # Path of $Child relative to $Parent with '/' separators; '' when it is not inside.
 function Get-RelPath([string]$Parent, [string]$Child) {
@@ -155,25 +162,40 @@ function Get-RelPath([string]$Parent, [string]$Child) {
     if (-not ($Child.TrimEnd('\') + '\').StartsWith($p, [StringComparison]::OrdinalIgnoreCase)) { return '' }
     return $Child.Substring($p.Length).TrimEnd('\') -replace '\\', '/'
 }
-# Nothing to re-survey: the last row was a codex run at HEAD and nothing is uncommitted outside
-# this goal dir (design.md itself excepted: it is the output, and is untracked until Opus commits).
+# Nothing to re-survey (called only for -Milestone A-0; a CP always has new retro/acceptance).
+# Measured from the LATEST row written by codex (later unchanged / opus rows are skipped):
+#   - committed changes since that row's SHA, ignoring that row's goal dir and design.md, and
+#   - uncommitted changes, ignoring the current goal dir and design.md.
+# Why those paths are ignored: Learning ends with Opus committing docs/r-super-loop-powers/, so
+# HEAD always moves past the row's SHA; the previous goal's records were already ingested by its
+# Learning update, so changes inside that goal's dir (and design.md itself) are not new material.
 function Test-Unchanged([string]$DesignText, [string]$Work, [string]$DesignPath) {
-    $rows = @(Get-HistoryRows $DesignText)
-    if ($rows.Count -eq 0) { return $false }
-    $last = Split-Row $rows[$rows.Count - 1]
-    if ($last.Count -lt 5 -or $last[4] -ne 'codex') { return $false }
-    if (-not (Test-SameSha $last[3] (Get-HeadSha $Work))) { return $false }
-    $goalRel = Get-RelPath $Work $GoalDir
+    $base = $null
+    foreach ($r in @(Get-HistoryRows $DesignText)) {
+        $c = Split-Row $r
+        if ($c.Count -ge 5 -and $c[4] -eq 'codex') { $base = $c }
+    }
+    if ($null -eq $base) { return $false }
+    $sha = $base[3]
+    if ($sha -notmatch '^[0-9a-f]{4,40}$') { return $false }
     $designRel = Get-RelPath $Work $DesignPath
-    $saved = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        $st = @(& git -c core.quotepath=false -C $Work status --porcelain --untracked-files=all 2>$null)
-        $code = $LASTEXITCODE
-    } catch { return $false } finally { $ErrorActionPreference = $saved }
-    if ($code -ne 0) { return $false }
-    foreach ($line in $st) {
-        $l = [string]$line
+    $docsRel = Get-RelPath $Work (Split-Path -Parent $GoalDir)
+    $rowGoalRel = $(if ($docsRel) { "$docsRel/$($base[1])" } else { '' })
+    $goalRel = Get-RelPath $Work $GoalDir
+
+    $committed = Get-GitLines $Work @('diff', '--name-only', "$sha..HEAD")
+    if ($null -eq $committed) { return $false }
+    foreach ($path in $committed) {
+        $p = $path.Trim().Trim('"')
+        if (-not $p) { continue }
+        if ($rowGoalRel -and $p.StartsWith($rowGoalRel + '/', [StringComparison]::OrdinalIgnoreCase)) { continue }
+        if ($designRel -and $p -ieq $designRel) { continue }
+        return $false
+    }
+
+    $st = Get-GitLines $Work @('status', '--porcelain', '--untracked-files=all')
+    if ($null -eq $st) { return $false }
+    foreach ($l in $st) {
         if ($l.Length -lt 4) { continue }
         $path = $l.Substring(3)
         $arrow = $path.IndexOf(' -> ')
@@ -384,7 +406,7 @@ if ($Fallback) {
     exit 0
 }
 
-if ($exists -and (Test-Unchanged $designText $WorkDir $designPath)) {
+if ($exists -and $Milestone -eq 'A-0' -and (Test-Unchanged $designText $WorkDir $designPath)) {
     $row = New-HistoryRow $tag (Get-HeadSha $WorkDir) 'unchanged'
     $text = Set-HistorySection $designText (@(Get-HistoryRows $designText) + @($row))
     Save-Design $designPath $text

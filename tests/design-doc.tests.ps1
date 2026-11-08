@@ -154,6 +154,44 @@ W (Join-Path $proj2 'src\x.js') 'dirty'
 $r = Invoke-DesignDoc $g2 @('-WorkDir', $proj2, '-Milestone', 'A-0')
 Check 'dirty-tree-is-update' ($r.Out -match '(?m)^LABEL: design-A-0-1$') $r.Out
 
+# --- unchanged is measured from the last codex row; the row goal's records and design.md do not count ---
+# A project whose design.md has a codex row (slug rowgoal, SHA = the first commit); then design.md is
+# committed, modified and committed again together with $CommitPath; then a new goal dir is made.
+function New-RowFixture([string]$Name, [string]$CommitPath) {
+    $p = New-Proj $Name
+    $head = (git -C $p rev-parse --short HEAD)
+    $d = Join-Path $p 'docs\r-super-loop-powers\design.md'
+    W $d (($goodWithRow -f $head).Replace('| g | A-0 |', '| rowgoal | A-0 |'))
+    git -C $p add -A 2>&1 | Out-Null
+    git -C $p -c user.name=t -c user.email=t@t commit -q -m design 2>&1 | Out-Null
+    W $d ((Get-Text $d) + "`n追記`n")
+    W (Join-Path $p $CommitPath) 'x'
+    git -C $p add -A 2>&1 | Out-Null
+    git -C $p -c user.name=t -c user.email=t@t commit -q -m later 2>&1 | Out-Null
+    return @{ P = $p; G = (New-Goal $p 'newgoal') }
+}
+$f = New-RowFixture 'p7' 'docs\r-super-loop-powers\rowgoal\milestones\1-x\retro.md'
+$r = Invoke-DesignDoc $f.G @('-WorkDir', $f.P, '-Milestone', 'A-0')
+Check 'unchanged-ignores-row-goal-records' ($r.Code -eq 0 -and $r.Out -match '(?m)^MODE: unchanged$') $r.Out
+$f = New-RowFixture 'p8' 'docs\r-super-loop-powers\other\milestones\1-x\retro.md'
+$r = Invoke-DesignDoc $f.G @('-WorkDir', $f.P, '-Milestone', 'A-0')
+Check 'changed-other-goal-records' ($r.Out -match '(?m)^LABEL: design-A-0-1$' -and $r.Out -notmatch 'MODE: unchanged') $r.Out
+$f = New-RowFixture 'p9' 'src\x.js'
+$r = Invoke-DesignDoc $f.G @('-WorkDir', $f.P, '-Milestone', 'A-0')
+Check 'changed-code-since-row' ($r.Out -match '(?m)^LABEL: design-A-0-1$' -and $r.Out -notmatch 'MODE: unchanged') $r.Out
+# CP never skips codex, even with the fixture that gives unchanged at A-0.
+$proj10 = New-Proj 'p10'; $g10 = New-Goal $proj10 'g10'
+W (Join-Path $proj10 'docs\r-super-loop-powers\design.md') ($goodWithRow -f (git -C $proj10 rev-parse --short HEAD))
+$r = Invoke-DesignDoc $g10 @('-WorkDir', $proj10, '-Milestone', 'CP')
+Check 'cp-never-unchanged' ($r.Out -match '(?m)^LABEL: design-CP\.1-one-1$' -and $r.Out -notmatch 'MODE: unchanged') $r.Out
+# A later unchanged row does not hide the codex row before it.
+$proj11 = New-Proj 'p11'; $g11 = New-Goal $proj11 'g11'
+$head11 = (git -C $proj11 rev-parse --short HEAD)
+$codexRow = "| 2026-11-01 10:00 | g | A-0 | $head11 | codex |"
+W (Join-Path $proj11 'docs\r-super-loop-powers\design.md') ($good.Replace('| BOGUS-ROW |', "$codexRow`n| 2026-11-02 10:00 | g | A-0 | $head11 | unchanged |"))
+$r = Invoke-DesignDoc $g11 @('-WorkDir', $proj11, '-Milestone', 'A-0')
+Check 'unchanged-after-unchanged-row' ($r.Code -eq 0 -and $r.Out -match '(?m)^MODE: unchanged$') $r.Out
+
 # --- collect: a hand-made finished run ---
 New-FinishedRun $g3 'design-A-0-1' $good 'A-0'
 W $design3 $previous
