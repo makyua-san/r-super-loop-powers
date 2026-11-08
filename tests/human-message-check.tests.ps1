@@ -182,12 +182,14 @@ Check 'design-doc-missing-logged' (@(Get-Content -Encoding UTF8 (Join-Path $noDe
 [IO.File]::WriteAllText((Join-Path $noDesignProj 'docs\r-super-loop-powers\design.md'), "# 設計書`r`n## 更新履歴`r`n| 2026-11-08 10:00 | g1 | CP:1-x | abc1234 | codex |`r`n", (New-Object System.Text.UTF8Encoding($true)))
 $r = Invoke-Hook (New-Input $ja $noDesignProj) $judgeOk
 Check 'design-doc-wrong-tag-blocks' ($r.Out -match '設計書が未更新' -and -not (Was-Called 'ok')) $r.Out
+# Row still absent here: with stop_hook_active neither the design-doc block nor the judge may run.
+Reset-Called
+$r = Invoke-Hook (New-Input $ja $noDesignProj $true) $judgeOk
+Check 'design-doc-stop-hook-active-skips' ($r.Out -eq '' -and -not (Was-Called 'ok')) $r.Out
 [IO.File]::AppendAllText((Join-Path $noDesignProj 'docs\r-super-loop-powers\design.md'), "| 2026-11-08 10:05 | g1 | A-0 | abc1234 | opus(代行: x) |`r`n", $utf8)
 Reset-Called
 $r = Invoke-Hook (New-Input $ja $noDesignProj) $judgeOk
 Check 'design-doc-row-crlf-passes' ($r.Out -eq '' -and (Was-Called 'ok')) $r.Out
-$r = Invoke-Hook (New-Input $ja $noDesignProj $true) $judgeOk
-Check 'design-doc-stop-hook-active-skips' ($r.Out -eq '') $r.Out
 Remove-Item (Join-Path $noDesignProj 'docs\r-super-loop-powers\design.md')
 [IO.File]::WriteAllText((Join-Path $noDesignGoal 'state.md'), "- phase: goal-definition`n- 担当: opus-main`n", $utf8)
 Reset-Called
