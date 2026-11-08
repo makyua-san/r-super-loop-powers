@@ -36,6 +36,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 . (Join-Path $PSScriptRoot 'codex-common.ps1')
 $Roles = @('fable', 'codex-techpm', 'codex-review', 'codex-grareco', 'codex-scout', 'codex-surveyor', 'sonnet-builder', 'haiku')
 
@@ -44,6 +45,22 @@ function Stop-Failed([string]$Reason, [string]$Next) {
     Write-Kv 'REASON' $Reason
     if ($Next) { Write-Kv 'NEXT' $Next }
     exit 1
+}
+
+function Stop-Refused([string]$Reason, [string]$Next) {
+    Write-Kv 'STATUS' 'REFUSED'
+    Write-Kv 'REASON' $Reason
+    if ($Next) { Write-Kv 'NEXT' $Next }
+    exit 1
+}
+
+# True when design.md (next to the goal dir) has a history row for this goal and tag.
+function Test-DesignRow([string]$GoalDir, [string]$Slug, [string]$Tag) {
+    $design = Join-Path (Split-Path -Parent $GoalDir) 'design.md'
+    if (-not (Test-Path -LiteralPath $design -PathType Leaf)) { return $false }
+    $text = Read-TextFile $design
+    $re = '(?m)^\|[^|]*\|\s*' + [regex]::Escape($Slug) + '\s*\|\s*' + [regex]::Escape($Tag) + '\s*\|'
+    return [regex]::IsMatch($text, $re)
 }
 
 function Get-Field([string]$Text, [string]$Key) {
@@ -89,6 +106,22 @@ $stateFile = Join-Path $GoalDir 'state.md'
 $stateText = Read-TextFile $stateFile
 if (-not $stateText.Trim()) { Stop-Failed "state.md not found or empty: $stateFile" '' }
 $now = Get-Date -Format 'yyyy-MM-dd HH:mm'
+
+# 0. design.md gate -- three transitions need a history row (checked against the state before this call).
+$gateTag = ''
+$gateArg = ''
+if ($updates['担当'] -eq 'hearing-fable') {
+    $gateTag = 'A-0'; $gateArg = 'A-0'
+} elseif ((Get-Field $stateText 'phase') -eq 'learning' -and @('milestone-implementation', 'done') -contains $updates['phase']) {
+    $gateTag = 'CP:' + (Get-Field $stateText 'milestone'); $gateArg = 'CP'
+}
+if ($gateTag) {
+    $slug = Split-Path -Leaf $GoalDir
+    if (-not (Test-DesignRow $GoalDir $slug $gateTag)) {
+        $projectRootG = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $GoalDir))
+        Stop-Refused "design.md has no row for '$slug' / '$gateTag'" "run design-doc.ps1 -GoalDir `"$GoalDir`" -WorkDir `"$projectRootG`" -Milestone $gateArg"
+    }
+}
 
 # 1. state.md -- validate every key before writing anything.
 $newState = $stateText

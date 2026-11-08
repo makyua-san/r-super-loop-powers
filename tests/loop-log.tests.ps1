@@ -45,6 +45,48 @@ Check 'who-haiku' ($r.Code -eq 0 -and (Get-Text (Join-Path $g 'call-log.md')) -m
 $r = Invoke-Log $g @('-Who', 'codex-surveyor', '-Purpose', 'A-0: create')
 Check 'who-codex-surveyor' ($r.Code -eq 0 -and (Get-Text (Join-Path $g 'call-log.md')) -match '\| codex-surveyor \| milestone-implementation \| A-0: create$') $r.Out
 
+# v0.12: the three gated transitions need a design.md history row.
+$design = Join-Path $proj 'docs\r-super-loop-powers\design.md'
+$row = "| 2026-11-08 10:00 | g1 | {0} | abc1234 | {1} |"
+$r = Invoke-Log $g @('-SetOwner', 'hearing-fable')
+Check 'owner-hearing-refused-without-design' ($r.Code -ne 0 -and $r.Out -match '(?m)^STATUS: REFUSED\r?$' -and $r.Out -match "design\.md has no row for 'g1' / 'A-0'" -and $r.Out -match '(?m)^NEXT: .*design-doc\.ps1 .*-Milestone A-0') $r.Out
+Check 'refused-writes-nothing' ((Get-Text (Join-Path $g 'state.md')) -notmatch 'hearing-fable') 'state.md changed on REFUSED'
+W $design ("# 設計書`n## 更新履歴`n| 日時 | ゴール | 節目 | 見たコミット | 書き手 |`n|---|---|---|---|---|`n" + ($row -f 'CP:0-old', 'codex') + "`n")
+$r = Invoke-Log $g @('-SetOwner', 'hearing-fable')
+Check 'owner-hearing-refused-wrong-tag' ($r.Code -ne 0 -and $r.Out -match '(?m)^STATUS: REFUSED\r?$') $r.Out
+[IO.File]::WriteAllText($design, ((Get-Text $design) + ($row -f 'A-0', 'codex') + "`n").Replace("`n", "`r`n"), (New-Object System.Text.UTF8Encoding($true)))
+$r = Invoke-Log $g @('-SetOwner', 'hearing-fable')
+Check 'owner-hearing-ok-crlf-bom' ($r.Code -eq 0 -and (Get-Text (Join-Path $g 'state.md')) -match '(?m)^- 担当: hearing-fable$') $r.Out
+W $design ("# 設計書`n## 更新履歴`n" + ($row -f 'A-0', 'opus(代行: codex TIMEOUT x2)') + "`n")
+$r = Invoke-Log $g @('-SetOwner', 'opus-main')
+$r = Invoke-Log $g @('-SetOwner', 'hearing-fable')
+Check 'owner-hearing-ok-fallback-row' ($r.Code -eq 0) $r.Out
+# learning -> next / done
+W (Join-Path $g 'state.md') ($stateLf -replace '- phase: milestone-implementation', '- phase: learning' -replace '- milestone: 1-one', '- milestone: 3-orders-and-degradation (CP1) — ACCEPT')
+W $design ("# 設計書`n## 更新履歴`n" + ($row -f 'A-0', 'codex') + "`n")
+$r = Invoke-Log $g @('-SetPhase', 'milestone-implementation', '-SetMilestone', '4-next')
+Check 'learning-next-refused' ($r.Code -ne 0 -and $r.Out -match '(?m)^STATUS: REFUSED\r?$' -and $r.Out -match "/ 'CP:3-orders-and-degradation \(CP1\) — ACCEPT'" -and (Get-Text (Join-Path $g 'state.md')) -match '(?m)^- phase: learning$') $r.Out
+$r = Invoke-Log $g @('-SetPhase', 'done')
+Check 'learning-done-refused' ($r.Code -ne 0 -and $r.Out -match '(?m)^STATUS: REFUSED\r?$') $r.Out
+W $design ((Get-Text $design) + ($row -f 'CP:3-orders-and-degradation (CP1) — ACCEPT', 'codex') + "`n")
+$r = Invoke-Log $g @('-SetPhase', 'milestone-implementation', '-SetMilestone', '4-next')
+Check 'learning-next-ok-decorated-milestone' ($r.Code -eq 0 -and (Get-Text (Join-Path $g 'state.md')) -match '(?m)^- milestone: 4-next$') $r.Out
+# not gated: goal-definition -> done (closing without doing it), human-acceptance -> milestone-implementation (REJECT)
+Remove-Item $design
+W (Join-Path $g 'state.md') ($stateLf -replace '- phase: milestone-implementation', '- phase: goal-definition')
+$r = Invoke-Log $g @('-SetPhase', 'done', '-SetOwner', 'opus-main')
+Check 'goal-definition-done-not-gated' ($r.Code -eq 0) $r.Out
+W (Join-Path $g 'state.md') ($stateLf -replace '- phase: milestone-implementation', '- phase: human-acceptance')
+$r = Invoke-Log $g @('-SetPhase', 'milestone-implementation')
+Check 'reject-return-not-gated' ($r.Code -eq 0) $r.Out
+# slug with a regex metacharacter
+$gd = Join-Path $proj 'docs\r-super-loop-powers\rb-84.85'
+W (Join-Path $gd 'state.md') $stateLf
+W $design ("# 設計書`n## 更新履歴`n| 2026-11-08 10:00 | rb-84x85 | A-0 | abc1234 | codex |`n")
+$r = Invoke-Log $gd @('-SetOwner', 'hearing-fable')
+Check 'slug-with-dot-escaped' ($r.Code -ne 0 -and $r.Out -match '(?m)^STATUS: REFUSED\r?$') 'rb-84.85 must not match rb-84x85'
+W (Join-Path $g 'state.md') $stateLf
+
 W (Join-Path $g 'state.md') ($stateLf -replace '- codex-run: -', '- codex-run: m1-grareco')
 $r = Invoke-Log $g @('-SetPhase', 'human-acceptance', '-SetMilestone', '2-two', '-SetWait', '受け入れテストの結果=OK/NG', '-Clear', 'codex-run')
 $st = Get-Text (Join-Path $g 'state.md')
