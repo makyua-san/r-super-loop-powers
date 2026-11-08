@@ -140,6 +140,18 @@ $r = Invoke-DesignDoc $g1 @('-WorkDir', $proj, '-Milestone', 'A-0')
 $p = Get-Text (Join-Path $g1 'codex-runs\design-A-0-2.prompt.md')
 Check 'update-prompt' ($p -match 'モード: 更新' -and $p -match 'git log --oneline deadbee\.\.HEAD' -and $p -match 'git diff --stat deadbee\.\.HEAD' -and $p -match [regex]::Escape($design1)) $p
 Check 'update-effort-medium' ((Get-Meta $g1 'design-A-0-2').effort -eq 'medium') 'update uses the role default'
+# The update prompt measures from the last codex row, not from a later opus fallback row.
+$proj12 = New-Proj 'p12'; $g12 = New-Goal $proj12 'g12'
+W (Join-Path $proj12 'docs\r-super-loop-powers\design.md') ($good.Replace('| BOGUS-ROW |', "| 2026-11-01 10:00 | g | A-0 | deadbee | codex |`n| 2026-11-02 10:00 | g | CP:1-one | cafe123 | opus(代行: x) |"))
+$r = Invoke-DesignDoc $g12 @('-WorkDir', $proj12, '-Milestone', 'A-0')
+$p = Get-Text (Join-Path $g12 'codex-runs\design-A-0-1.prompt.md')
+Check 'update-prompt-base-is-last-codex-row' ($p -match 'モード: 更新' -and $p -match 'git log --oneline deadbee\.\.HEAD' -and $p -notmatch 'cafe123') $p
+# Only a fallback row (as -Fallback creates): no git range, read everything.
+$proj13 = New-Proj 'p13'; $g13 = New-Goal $proj13 'g13'
+W (Join-Path $proj13 'docs\r-super-loop-powers\design.md') ($good.Replace('| BOGUS-ROW |', '| 2026-11-02 10:00 | g | A-0 | cafe123 | opus(代行: x) |'))
+$r = Invoke-DesignDoc $g13 @('-WorkDir', $proj13, '-Milestone', 'A-0')
+$p = Get-Text (Join-Path $g13 'codex-runs\design-A-0-1.prompt.md')
+Check 'update-prompt-no-codex-row-reads-all' ($p -match 'モード: 更新' -and $p -match '全体に読み直し' -and $p -notmatch 'git log --oneline' -and $p -notmatch 'git diff --stat') $p
 
 # --- unchanged: last row SHA == HEAD, writer codex, nothing dirty outside the goal dir ---
 $head2 = (git -C $proj2 rev-parse --short HEAD)

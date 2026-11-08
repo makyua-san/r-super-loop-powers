@@ -162,6 +162,18 @@ function Get-RelPath([string]$Parent, [string]$Child) {
     if (-not ($Child.TrimEnd('\') + '\').StartsWith($p, [StringComparison]::OrdinalIgnoreCase)) { return '' }
     return $Child.Substring($p.Length).TrimEnd('\') -replace '\\', '/'
 }
+# Cells of the LATEST history row written by codex (later unchanged / opus rows skipped), the base
+# that both the unchanged check and the update prompt measure from. $null when there is no such
+# row or its SHA is not a commit id.
+function Get-BaseRow([string]$DesignText) {
+    $base = $null
+    foreach ($r in @(Get-HistoryRows $DesignText)) {
+        $c = Split-Row $r
+        if ($c.Count -ge 5 -and $c[4] -eq 'codex') { $base = $c }
+    }
+    if ($null -eq $base -or $base[3] -notmatch '^[0-9a-f]{4,40}$') { return $null }
+    return , $base
+}
 # Nothing to re-survey (called only for -Milestone A-0; a CP always has new retro/acceptance).
 # Measured from the LATEST row written by codex (later unchanged / opus rows are skipped):
 #   - committed changes since that row's SHA, ignoring that row's goal dir and design.md, and
@@ -170,14 +182,9 @@ function Get-RelPath([string]$Parent, [string]$Child) {
 # HEAD always moves past the row's SHA; the previous goal's records were already ingested by its
 # Learning update, so changes inside that goal's dir (and design.md itself) are not new material.
 function Test-Unchanged([string]$DesignText, [string]$Work, [string]$DesignPath) {
-    $base = $null
-    foreach ($r in @(Get-HistoryRows $DesignText)) {
-        $c = Split-Row $r
-        if ($c.Count -ge 5 -and $c[4] -eq 'codex') { $base = $c }
-    }
+    $base = Get-BaseRow $DesignText
     if ($null -eq $base) { return $false }
     $sha = $base[3]
-    if ($sha -notmatch '^[0-9a-f]{4,40}$') { return $false }
     $designRel = Get-RelPath $Work $DesignPath
     $docsRel = Get-RelPath $Work (Split-Path -Parent $GoalDir)
     $rowGoalRel = $(if ($docsRel) { "$docsRel/$($base[1])" } else { '' })
@@ -434,14 +441,14 @@ $docsDir = Split-Path -Parent $GoalDir
 $docsRel = Get-RelPath $WorkDir $docsDir
 if (-not $docsRel) { $docsRel = $docsDir }
 if ($exists) {
-    $prevSha = ''
-    foreach ($r in @(Get-HistoryRows $designText)) {
-        $c = Split-Row $r
-        if ($c.Count -ge 4 -and $c[3] -match '^[0-9a-f]{7,40}$') { $prevSha = $c[3] }
+    # Measured from the last codex row, like Test-Unchanged: an opus fallback row did not survey.
+    $baseRow = Get-BaseRow $designText
+    $prevSha = $(if ($null -ne $baseRow) { $baseRow[3] } else { '' })
+    if ($prevSha) {
+        $read = @("- 前回の設計書: $designPath(土台にする。章立てと既存の行を保ち、変わったところだけ直す)")
+    } else {
+        $read = @("- 前回の設計書: $designPath(Codex が書いた版が無い。Opus の代筆や「(未作成 …)」の行は土台にせず、章立てだけ借りる)")
     }
-    $read = @(
-        "- 前回の設計書: $designPath(土台にする。章立てと既存の行を保ち、変わったところだけ直す)"
-    )
     if ($prevSha) {
         $read += @(
             "- 前回の履歴行の SHA: $prevSha。次を自分で実行し、変わったファイルに関係する行だけ見直す(読み取り専用で実行できる)",
@@ -449,12 +456,12 @@ if ($exists) {
             "  - ``git diff --stat $prevSha..HEAD``"
         )
     } else {
-        $read += '- 前回の SHA が履歴に無い: コードと記録を全体に読み直し、前回の設計書と食い違うところを直す'
+        $read += '- 前回の SHA が履歴に無い(Codex の行が無い): コードと記録を全体に読み直し、作成と同じように全文を書く。git の範囲で絞らない'
     }
     $read += @(
         "- 対象プロジェクト: $WorkDir(作業ディレクトリ。git grep / rg / 直接読む)",
         "- 今回のゴール: $GoalDir(goal-seed.md・goal-frame.md・state.md・milestones/*/acceptance.md・milestones/*/retro.md・assumptions.md・hearing-log.md の ## 結論)。A-0 のときは goal-seed.md だけなので、コードの差分が中心になる",
-        "- 他のゴール: $docsDir の下の他のゴールディレクトリで、前回以降に増えた acceptance.md / retro.md / hearing-log.md の結論(並行ゴールの分)$(if ($prevSha) { "。``git log --name-only $prevSha..HEAD -- $docsRel`` と未コミットのファイルで探す" })"
+        $(if ($prevSha) { "- 他のゴール: $docsDir の下の他のゴールディレクトリで、前回以降に増えた acceptance.md / retro.md / hearing-log.md の結論(並行ゴールの分)。``git log --name-only $prevSha..HEAD -- $docsRel`` と未コミットのファイルで探す" } else { "- 他のゴール: $docsDir の下の全ゴールディレクトリの記録(goal-seed.md・goal-frame.md・state.md・milestones/*/acceptance.md・milestones/*/retro.md・assumptions.md・hearing-log.md の ## 結論)" })
     )
 } else {
     $read = @(
