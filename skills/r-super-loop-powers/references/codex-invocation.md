@@ -146,11 +146,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\design-doc.
 ... \bin\design-doc.ps1 -GoalDir "<goal-dir>" -WorkDir "<対象プロジェクトのルート>" -Milestone A-0|CP -Fallback -Reason "<理由>"
 ```
 
-Bash ツールの `timeout` を 600000 にして呼ぶ。作成は 30 分、更新は 15 分が codex の上限で、作成は十数分から 1 時間かかる。
+Bash ツールの `timeout` を 600000 にして呼ぶ。作成は 30 分、更新は 15 分が codex の上限で、作成は十数分から 1 時間かかる。codex 基準行が無い(代筆だけの履歴)更新は、作成と同じ effort `high`・30 分で走り、プロンプトは全体に読み直しになる(MODE は update のまま)。
 
 | 行 | 意味 |
 |---|---|
-| `STATUS: OK` | `LABEL:`・`MODE:`(`create` / `update` / `unchanged` / `fallback`)・`DESIGN_DOC:`(保存先)・`FEATURES:`(機能の地図の行数)・`INSUFFICIENT:`(『取り組んだが足りない』の件数)・`HISTORY:`(履歴行の数)・`ELAPSED_MIN:` |
+| `STATUS: OK` | `LABEL:`・`MODE:`(`create` / `update` / `unchanged` / `fallback`)・`DESIGN_DOC:`(保存先)・`FEATURES:`(機能の地図の行数)・`INSUFFICIENT:`(『取り組んだが足りない』の件数)・`HISTORY:`(今回足した履歴行の本文)・`ELAPSED_MIN:`。`MODE: unchanged` と `MODE: fallback` は Codex を走らせないので `LABEL:` と `ELAPSED_MIN:` が無い |
 | `WARN: design.md is N KB (> 40 KB)` | 設計書が大きい。次の更新で絞らせる(その場では止めない) |
 | `STATUS: INCOMPLETE` | 必須の 6 節(`更新履歴`・`構成`・`機能の地図`・`取り組んだが足りない`・`要望はあるが未着手`・`運用で見る懸念`)のどれかが無い。`RAW:` に本文。`design.md` は置き換わらない |
 | `STATUS: RUNNING` / `STALLED` | 9 分で終わらなかった。`NEXT:` の `-Collect <label>` で回収する |
@@ -160,7 +160,7 @@ Bash ツールの `timeout` を 600000 にして呼ぶ。作成は 30 分、更�
 - **履歴行はスクリプトが足す**: `| 日時 | <goal-slug> | <節目> | <SHA> | codex |`。Codex が書いた履歴行は捨てられる。
 - **`unchanged`(A-0 だけ)**: 履歴の最後の書き手が `codex` の行を基準に、その SHA 以降の差分が `docs/r-super-loop-powers/<その行のゴール>/` と `design.md` だけで、現在のゴール記録と `design.md` 以外に未コミットの変更も無いとき、Codex を呼ばずに書き手 `unchanged` の行だけを足す。`CP` は常に更新する。
 - **再実行の `NEXT:`**: `TIMEOUT` は effort を 1 段下げた同じコマンド、`INCOMPLETE` / `FAILED` / `SUSPECT` / `LOST` は同じコマンド、`RUNNING` / `STALLED` は `-Collect`。再実行は 1 回だけ。
-- **`-Fallback`**: 2 回目も `OK` でなければ、`-Fallback -Reason "<理由>"` で Opus が履歴行だけを代筆する(書き手は `opus(代行: <理由>)`。設計書が既にあれば本文は書き換えず、無ければ雛形から作る)。
+- **`-Fallback`**: 2 回目も `OK` でなければ、`-Fallback -Reason "<理由>"` で Opus が履歴行だけを代筆する(書き手は `opus(代行: <理由>)`。設計書が既にあれば本文は書き換えず、無ければ雛形から作る。記帳もスクリプトが行う。Opus は書かない)。設計書があるのに読めない・空のときは `STATUS: FAILED` で何も書かない。
 ---
 
 ## 3. 既知の環境問題

@@ -141,7 +141,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\design-doc.
   - 今回のゴールのディレクトリ(作成と同じファイル群)。A-0 のときは `goal-seed.md` だけがあるので、コードの差分が中心になる
   - 他のゴールディレクトリで前回以降に `acceptance.md` / `retro.md` / `hearing-log.md` の結論が増えたもの(並行ゴールの分)
 - 「取り組んだが足りない」の判定材料を明示する: acceptance の REJECT 理由とスキップ、retro の発見された未知、台帳の未検証・棄却、phase が `done` でないゴール(finalization のまま等)、goal-frame の運用で見る懸念。
-- タイムアウト: 作成 30 分、更新 15 分(`-TimeoutMinutes`。再実行を含めた最悪の待ちは作成で約 60 分。作成者の判断。builder が実測で直してよい)。
+- タイムアウト: 作成 30 分、更新 15 分(`-TimeoutMinutes`。再実行を含めた最悪の待ちは作成で約 60 分。作成者の判断。builder が実測で直してよい)。codex 基準行が無い更新(履歴が代筆だけ)は、作成と同じ effort `high`・30 分で走り、プロンプトは全体に読み直しになる(`MODE` は update のまま。final review の指摘で追加)。
 
 ### 4.5 必ず通るための仕組み
 

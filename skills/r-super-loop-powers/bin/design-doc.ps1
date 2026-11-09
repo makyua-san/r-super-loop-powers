@@ -7,7 +7,8 @@
   Modes:
     start     -GoalDir -WorkDir -Milestone <A-0|CP> [-Effort] [-WaitMinutes 9] [-Label] [-EnvFile]
               no design.md      -> create (-Effort high unless given, 30 min)
-              design.md exists  -> update (15 min, role default effort unless given)
+              design.md exists  -> update (15 min, role default effort unless given;
+                                   no codex row in the history -> 30 min, -Effort high like create)
                                    or unchanged (A-0 only; nothing new since the last codex row,
                                    see Test-Unchanged): no codex, only a history row
     collect   -GoalDir -Collect <label> [-WaitMinutes 9]
@@ -93,6 +94,11 @@ function Limit-Text([string]$Text, [int]$Max) {
     if ($s.Length -gt $Max) { return $s.Substring(0, $Max) }
     return $s
 }
+# Read-TextFile returns '' when it cannot read: an existing design.md that reads back empty is
+# never treated as "no body" (that would overwrite it with only a history section).
+function Stop-Unreadable {
+    Stop-Failed 'FAILED' 'design.md exists but could not be read (or is empty); not overwriting' "check $designPath (permissions, lock, or an empty file) and re-run; nothing was written"
+}
 function Get-DesignPath([string]$Goal) { return (Join-Path (Split-Path -Parent $Goal) 'design.md') }
 # 'A-0' stays; 'CP' -> 'CP:<state.md milestone, trimmed>'. '' when it cannot be built.
 function Get-MilestoneTag([string]$Ms, [string]$StateText) {
@@ -130,9 +136,11 @@ function Set-HistorySection([string]$Body, [string[]]$Rows) {
     $new = "`n" + ((@($frame) + @($Rows)) -join "`n") + "`n`n"
     return $lf.Substring(0, $g.Index) + $new + $lf.Substring($g.Index + $g.Length)
 }
+# Slug and tag stay verbatim (trimmed only): loop-log.ps1 matches them against state.md as-is.
+# Only the writer cell (free text from -Reason) is squeezed to one line without "|".
 function New-HistoryRow([string]$Tag, [string]$Sha, [string]$Writer) {
-    $cells = @((Get-Date -Format 'yyyy-MM-dd HH:mm'), (Split-Path -Leaf $GoalDir), $Tag, $Sha, $Writer)
-    return '| ' + (($cells | ForEach-Object { Limit-Text $_ 200 }) -join ' | ') + ' |'
+    $cells = @((Get-Date -Format 'yyyy-MM-dd HH:mm'), (Split-Path -Leaf $GoalDir).Trim(), $Tag.Trim(), $Sha.Trim(), (Limit-Text $Writer 200))
+    return '| ' + ($cells -join ' | ') + ' |'
 }
 function Get-HeadSha([string]$Dir) {
     if (-not $Dir) { return '-' }
@@ -359,8 +367,10 @@ function Complete-Run([string]$L) {
     $prevRows = @()
     if (Test-Path -LiteralPath $designPath) {
         $mode = 'update'
+        $prevText = Read-TextFile $designPath
+        if (-not ([string]$prevText).Trim()) { Stop-Unreadable }
         Copy-Item -LiteralPath $designPath -Destination (Join-Path $runDir "$L.design-prev.md") -Force
-        $prevRows = @(Get-HistoryRows (Read-TextFile $designPath))
+        $prevRows = @(Get-HistoryRows $prevText)
     }
     $row = New-HistoryRow $tag (Get-HeadSha $work) 'codex'
     $text = Set-HistorySection $body (@($prevRows) + @($row))
@@ -393,6 +403,7 @@ $tag = Get-MilestoneTag $Milestone (Read-TextFile (Join-Path $GoalDir 'state.md'
 if (-not $tag) { Stop-Failed 'FAILED' "-Milestone CP needs a 'milestone:' value in $(Join-Path $GoalDir 'state.md')" '' }
 $exists = Test-Path -LiteralPath $designPath
 $designText = $(if ($exists) { Read-TextFile $designPath } else { '' })
+if ($exists -and $Fallback -and -not ([string]$designText).Trim()) { Stop-Unreadable }
 
 if ($Fallback) {
     $why = Limit-Text $Reason 200
@@ -519,11 +530,14 @@ $promptFile = Join-Path $runDir "$Label.prompt.md"
 Write-TextFile $promptFile (($prompt -join "`n") -replace "`r`n", "`n")
 
 $runArgs = @('-EnvFile', $EnvFile, '-Label', $Label, '-PromptFile', $promptFile, '-WorkDir', $WorkDir, '-RunDir', $runDir, '-Role', 'surveyor')
-if ($exists) {
+# No codex base row (none, or only opus fallback rows) means a full re-read: size it like a create.
+# MODE stays update (the file exists); only the effort and timeout follow the work.
+$createLike = (-not $exists) -or (-not $prevSha)
+if ($createLike) {
+    $runArgs += @('-TimeoutMinutes', '30', '-Effort', $(if ($Effort) { $Effort } else { 'high' }))
+} else {
     $runArgs += @('-TimeoutMinutes', '15')
     if ($Effort) { $runArgs += @('-Effort', $Effort) }
-} else {
-    $runArgs += @('-TimeoutMinutes', '30', '-Effort', $(if ($Effort) { $Effort } else { 'high' }))
 }
 # Contract item 1 confines codex to the working directory; add the goal documents when they
 # live outside it (same rule as scout.ps1).

@@ -255,6 +255,27 @@ W $design6 $previous
 $r = Invoke-DesignDoc $g6 @('-WorkDir', $proj6, '-Milestone', 'CP', '-Fallback', '-Reason', 'x')
 Check 'fallback-append-keeps-body' ((Get-Text $design6) -match 'BODY-MARKER' -and (Get-Text $design6) -match '\| g6 \| CP:1-one \| [0-9a-f]{7,} \| opus\(代行: x\) \|') (Get-Text $design6)
 
+# A fallback row for a milestone with doubled spaces satisfies the loop-log.ps1 CP gate (cells verbatim).
+$proj14 = New-Proj 'p14'; $g14 = New-Goal $proj14 'g14'
+W (Join-Path $g14 'state.md') (($stateLf -replace '- phase: milestone-implementation', '- phase: learning') -replace '- milestone: 1-one', '- milestone: 3-x  (CP1)')
+$r = Invoke-DesignDoc $g14 @('-WorkDir', $proj14, '-Milestone', 'CP', '-Fallback', '-Reason', 'x')
+$loopLog = Join-Path $skillDir 'bin\loop-log.ps1'
+$ll = & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $loopLog -GoalDir $g14 -SetPhase milestone-implementation -SetMilestone 4-y 2>&1 | Out-String
+$llCode = $LASTEXITCODE
+Check 'fallback-row-satisfies-loop-log-gate' ($r.Code -eq 0 -and $llCode -eq 0 -and $ll -match '(?m)^STATUS: OK\r?$') "$($r.Out)`n$ll`n$(Get-Text (Join-Path $proj14 'docs\r-super-loop-powers\design.md'))"
+# An update whose history has only fallback rows runs like a create: effort high, 30 minutes.
+$proj15 = New-Proj 'p15'; $g15 = New-Goal $proj15 'g15'
+W (Join-Path $proj15 'docs\r-super-loop-powers\design.md') ($good.Replace('| BOGUS-ROW |', '| 2026-11-02 10:00 | g | A-0 | cafe123 | opus(代行: x) |'))
+$r = Invoke-DesignDoc $g15 @('-WorkDir', $proj15, '-Milestone', 'A-0')
+$m15 = Get-Meta $g15 'design-A-0-1'
+Check 'no-codex-row-update-is-create-class' ($m15.effort -eq 'high' -and [string]$m15.timeoutMinutes -eq '30') "$($r.Out)`n$($m15 | ConvertTo-Json)"
+# An existing but empty (or unreadable) design.md is not overwritten by -Fallback.
+$proj16 = New-Proj 'p16'; $g16 = New-Goal $proj16 'g16'; $design16 = Join-Path $proj16 'docs\r-super-loop-powers\design.md'
+W $design16 ''
+$log16Before = Get-Text (Join-Path $g16 'call-log.md')
+$r = Invoke-DesignDoc $g16 @('-WorkDir', $proj16, '-Milestone', 'A-0', '-Fallback', '-Reason', 'x')
+Check 'fallback-refuses-empty-existing-design' ($r.Code -eq 1 -and $r.Out -match '(?m)^STATUS: FAILED$' -and (Get-Item -LiteralPath $design16).Length -eq 0 -and (Get-Text (Join-Path $g16 'call-log.md')) -eq $log16Before) "$($r.Out)`nsize=$((Get-Item -LiteralPath $design16).Length)"
+
 # --- size warning ---
 New-FinishedRun $g3 'design-A-0-5' ($good + "`n" + ('x' * 41000)) 'A-0'
 $r = Invoke-DesignDoc $g3 @('-Collect', 'design-A-0-5')
