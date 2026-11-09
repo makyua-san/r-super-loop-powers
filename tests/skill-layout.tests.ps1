@@ -53,10 +53,11 @@ Check 'boundary-list' ($s -match '人間待ち' -and $s -match 'B-6 PASS' -and $
 Check 'policy-grareco-low' ((Get-Text (Join-Path $skillDir 'policy.md')) -match '`low` / read-only\(`-Role grareco`\)') 'policy.md grareco effort'
 Check 'builder-read-exception' ((Get-Text (Join-Path $root 'agents\builder.md')) -match 'impl-runs/\*\.prompt\.md' -and (Get-Text (Join-Path $root 'agents\builder.md')) -match 'tech-assessment\.md') 'builder exception'
 $ver = ((Get-Text (Join-Path $root '.claude-plugin\plugin.json')) | ConvertFrom-Json).version
-Check 'version-0.11.0' ($ver -eq '0.11.0') "version=$ver"
+Check 'version-0.12.0' ($ver -eq '0.12.0') "version=$ver"
 Check 'skill-model-check-hearing' ($s -match 'hearing-fable' -and $s -match '/model fable') 'model check knows the hearing'
 Check 'skill-hearing-ref' ($s -match 'references/hearing\.md') 'SKILL points to hearing.md'
 Check 'skill-proxy-a2' ($s -notmatch 'A-1a〜A-4') 'proxy alive range is A-2..A-4'
+Check 'skill-design-doc' ($s -match 'docs/r-super-loop-powers/design\.md' -and $s -match 'codex-surveyor' -and $s -match '-Role techpm \| reviewer \| grareco \| scout \| surveyor' -and $s -match '設計書役の失敗' -and $s -match '5ロール') 'SKILL.md design-doc rules'
 Check 'policy-fable-direct' ($policyText -match 'メインセッション' -and $policyText -match '10 分') 'policy rows updated'
 $readme = Get-Text (Join-Path $root 'README.md')
 Check 'readme-direct-hearing' ($readme -match '/model fable' -and $readme -notmatch 'A-1aでFable駆動のヒアリング往復が行われ') 'README flow and E2E list'
@@ -97,7 +98,7 @@ $dd = Get-Text (Join-Path $tpl 'design-doc.md')
 Check 'tpl-design-doc-sections' ($dd -match '(?m)^## 更新履歴' -and $dd -match '(?m)^## 0\. 構成' -and $dd -match '(?m)^### 0\.1 全体概要' -and $dd -match '(?m)^### 0\.2 主要な機能の流れ' -and $dd -match '(?m)^## 1\. 機能の地図' -and $dd -match '(?m)^## 2\. 取り組んだが足りない' -and $dd -match '(?m)^## 3\. 要望はあるが未着手' -and $dd -match '(?m)^## 4\. 運用で見る懸念') 'design-doc template sections'
 Check 'tpl-design-doc-vocab' ($dd -match 'できている / 一部 / 取り組んだが足りない / 進行中 / 未着手' -and $dd -match '\| 日時 \| ゴール \| 節目 \| 見たコミット \| 書き手 \|' -and $dd -match '\(推測\)') 'design-doc vocabulary'
 $cver = ((Get-Text (Join-Path $root '.codex-plugin\plugin.json')) | ConvertFrom-Json).version
-Check 'codex-version-0.1.2' ($cver -eq '0.1.2') "codex version=$cver"
+Check 'codex-version-0.1.3' ($cver -eq '0.1.3') "codex version=$cver"
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\sync-templates.ps1') -Mode Verify | Out-Null
 Check 'templates-in-sync' ($LASTEXITCODE -eq 0) 'sync-templates Verify failed'
 & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\sync-roles.ps1') -Mode Verify | Out-Null

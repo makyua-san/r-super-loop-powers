@@ -26,7 +26,7 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\codex-preflight.ps1" -EnvOut "<goal-dir>\codex-env.json"
    ```
-   codex実体・バージョン・認証・モデル疎通を1回で確認する。codex は**技術PM・技術レビュー(高信頼)・グラレコ・スカウトの4ロールだけ**、**すべて `gpt-6.1-sol` の読み取り専用**で使う。`PREFLIGHT: OK` なら `codex-env.json` のパスを state.md の `codex-env:` に記録する。`FAILED` なら `REASON:` をそのままユーザーへ提示して**停止する**(黙って別モデルへ落とさない。代替はユーザーが指名した場合のみ `-Model`)。旧 codex-env.json の扱いは `references/codex-invocation.md` 2-1。
+   codex実体・バージョン・認証・モデル疎通を1回で確認する。codex は**技術PM・技術レビュー(高信頼)・グラレコ・スカウト・設計書役の5ロールだけ**、**すべて `gpt-6.1-sol` の読み取り専用**で使う。`PREFLIGHT: OK` なら `codex-env.json` のパスを state.md の `codex-env:` に記録する。`FAILED` なら `REASON:` をそのままユーザーへ提示して**停止する**(黙って別モデルへ落とさない。代替はユーザーが指名した場合のみ `-Model`)。旧 codex-env.json の扱いは `references/codex-invocation.md` 2-1。
 7. **実装役エージェントの確認**: Agentツールで使えるエージェント種別に `r-super-loop-powers:builder`(Sonnet 5.5)があることを確認する。無い場合(更新後に再起動していない等)はユーザーに報告して停止する。**汎用エージェントや `model: sonnet` 指定で実装を代行させない**。
 8. **対象プロジェクトの git 確認**: git リポジトリでない、またはコミットが1つも無い場合、`impl-check.ps1` は基準コミットが無いと実装役の変更を判定できない。そう説明して `git init` + 初回コミットを承認してもらう。**承認なしでワークフローBを開始しない。** Opus が自分の判断で `git init` やコミットをしない。
 9. **手順書の読込**: state.md の phase が `goal-definition`(または新規ゴール)なら `references/workflow-a.md` を、それ以外なら `references/workflow-b.md` を読む。**両方は読まない**(A-8 → B-1 の境では境界リセットの後に B を読む)。
@@ -37,6 +37,7 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
 対象プロジェクト内に次を作成・維持する:
 
 ```
+docs/r-super-loop-powers/design.md   # 設計書(プロジェクトに 1 つ。bin/design-doc.ps1 が書く)
 docs/r-super-loop-powers/<goal-slug>/
 ├── state.md                 # 現在地(下記フォーマット)
 ├── goal-seed.md             # 人間の意図(原文のまま)
@@ -49,13 +50,13 @@ docs/r-super-loop-powers/<goal-slug>/
 ├── goal-plan-submission.md  # A-5 Goal Plan承認用submission
 ├── goal-gate-decision.md    # A-6 Goal Gate判定
 ├── call-log.md              # 呼び出し記録(PL-007。loop-log.ps1 が追記)
-├── hook-log.md              # フックの記録(PASS/BLOCK/ERROR・RESUME/STALE・CTX)
-├── resume-pending           # 境界リセットの印(-Mark が置き、SessionStart フックが消す)
+├── hook-log.md              # フックの記録
+├── resume-pending           # 境界リセットの印
 ├── resume-packet.md         # 直近の再開パケット全文(resume-packet.ps1 が書く)
-├── codex-env.json           # 起動時チェック6のプリフライト結果
-├── codex-runs/              # codex 4 ロールの実行記録
-├── scout/                   # スカウトの報告(index.md / scout-<n>.md。scout.ps1 が書く)
-├── impl-runs/               # 実装役への委譲記録(<ラベル>.prompt.md / .base.txt / .pre.txt / .report.md)
+├── codex-env.json           # プリフライト結果
+├── codex-runs/              # codex の実行記録
+├── scout/                   # スカウトの報告(scout.ps1 が書く)
+├── impl-runs/               # 実装役への委譲記録
 └── milestones/<n>-<名前>/
     ├── submission.md / gate-decision.md / decisions.md
     ├── grareco-input.md / grareco.png
@@ -105,7 +106,7 @@ docs/r-super-loop-powers/<goal-slug>/
 
 ## 記録ルール(PL-007)と記帳スクリプト
 
-fable / codex-techpm / codex-review / codex-grareco / codex-scout / sonnet-builder を呼ぶたび、および代理Fableとの SendMessage 往復のたびに、直後に `call-log.md` へ 1 行追記する。追記・state.md の更新・再開の印は、すべて `bin/loop-log.ps1` で **1 回の呼び出し**にまとめる(手で `Add-Content` や Write をしない。記帳だけのターンを増やさない):
+fable / codex-techpm / codex-review / codex-grareco / codex-scout / codex-surveyor / sonnet-builder を呼ぶたび、および代理Fableとの SendMessage 往復のたびに、直後に `call-log.md` へ 1 行追記する。追記・state.md の更新・再開の印は、すべて `bin/loop-log.ps1` で **1 回の呼び出し**にまとめる(手で `Add-Content` や Write をしない。記帳だけのターンを増やさない):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps1" -GoalDir "<goal-dir>" `
@@ -129,9 +130,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 5. 実装役(Sonnet)にも codex にもコミットさせない
 6. 否定リストに触れる仮説を自律実行しない — エスカレーションまたは人間確認へ
 7. 代理ブレストに参加したFableインスタンスにゲート判定(A-6 / B-6)をさせない(自己承認の禁止)(SK-010)
-8. **成否は機械判定で決める。** codex は `codex-status.ps1`、実装役は `impl-check.ps1` の `STATUS: OK` 以外を成功として扱わない。プロセスが消えたこと・報告が返ったことは、いずれも単独では完了の証拠にならない。判定を目視や推測で代替しない。グラレコとスカウトの失敗だけはループを止めない(代行して記帳する)
+8. **成否は機械判定で決める。** codex は `codex-status.ps1`、実装役は `impl-check.ps1` の `STATUS: OK` 以外を成功として扱わない。プロセスが消えたこと・報告が返ったことは、いずれも単独では完了の証拠にならない。判定を目視や推測で代替しない。グラレコ・スカウト・設計書役の失敗だけはループを止めない(代行して記帳する)
 9. codexの呼び出しは `bin/` のスクリプト経由でのみ行う。起動コマンドを自分で組み立てない。実装役は Agentツールの `r-super-loop-powers:builder` でのみ起動する
-10. codex は助言・レビュー・画像生成の**読み取り専用ロール**である。必ず `-Role techpm | reviewer | grareco | scout` のいずれかで起動し(スクリプトが read-only を強制する)、コード変更・設計承認・要件適合の判定をさせない
+10. codex は助言・レビュー・画像生成の**読み取り専用ロール**である。必ず `-Role techpm | reviewer | grareco | scout | surveyor` のいずれかで起動し(スクリプトが read-only を強制する)、コード変更・設計承認・要件適合の判定をさせない
 11. 実装役は実行者である。設計・計画・選択肢の提示をやり直させない。承認済みの技術アセス(高信頼は人間承認済みの plan)をプロンプトに入れずに委譲しない
 
 ## Fableサブエージェント共通契約
@@ -165,7 +166,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 
 ## プラグインのフック
 
-プラグインは 3 つのフックを持つ: SessionStart(再開パケットの注入)・PostToolUse(Agent 呼び出し後の文脈メーター)・Stop(人間向け応答チェック)。前 2 つは「境界リセット」のとおり。Stop は、ゴールループ中(phase が done でない state.md がある)にあなたが人間へ返す応答を、日本語か / 結論やお願いが冒頭か / 答え方が明確か / 内部用語を説明なしに使っていないか / 端的か、の5点で検査する。最初からこの基準で書く。`[r-super-loop-powers] 人間向けの応答を書き直してください` で始まる指摘を受けたら、内容は変えずに書き直して返す(1回だけ)。結果は `hook-log.md` に残り、判定役が動かないときは検査なしで通る。
+プラグインは 3 つのフックを持つ: SessionStart(再開パケットの注入)・PostToolUse(Agent 呼び出し後の文脈メーター)・Stop(人間向け応答チェック)。前 2 つは「境界リセット」のとおり。Stop は、ゴールループ中(phase が done でない state.md がある)にあなたが人間へ返す応答を、日本語か / 結論やお願いが冒頭か / 答え方が明確か / 内部用語を説明なしに使っていないか / 端的か、の5点で検査する。`[r-super-loop-powers] 人間向けの応答を書き直してください` で始まる指摘を受けたら、内容は変えずに書き直して返す(1回だけ)。結果は `hook-log.md` に残り、判定役が動かないときは検査なしで通る。
 
 ## 読むものと読まないもの(文脈を薄く保つ)
 
@@ -175,6 +176,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 | Fable を呼ぶ直前 | roles.md の「全体図 (overview)」と該当ロールの節 | roles.md の他の節 |
 | codex を呼ぶとき | `references/codex-invocation.md`(初回) | — |
 | 調べもの(場所不明・3 ファイル超・Web) | **まずスカウト** `bin/scout.ps1`(timeout 600000。使い方は codex-invocation.md 2-6)。`CONCLUSION:` 行だけ使い、先に `-List` を引く | Opus 本体の Read / Grep の重ね掛け、調査用サブエージェント(Explore 等) |
+| 設計書(design.md) | 照合スカウトが指した行だけ | 全文の Read |
 | 実装役の報告 | Agent の最終メッセージ(文脈に 1 回入る)→ `impl-check.ps1 -SaveReport` で保存と判定 | `.report.md` の読み直し |
 | 画像(スクショ・グラレコ) | 読まない。確認が要るなら Agent(model: sonnet)に見せて 5 行で返させる。人間に渡すなら SendUserFile かパス | Read ツールで画像を開く |
 | シェルの結果 | 失敗分だけ(テストは `… \| grep -E 'FAIL\|ALL PASS'` のように、`FAIL` / `FAILURES` / `ALL PASS` の行だけを出す)。切り詰めてよいが要約はしない | 全出力 |
