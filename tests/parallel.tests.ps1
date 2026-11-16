@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Tests for bin/parallel.ps1: -Prepare (checks, worktrees, ledger, state.md), -Status, -Pass and -Halt.
+# Tests for bin/parallel.ps1: -Prepare (checks, worktrees, ledger, state.md), -Status, -Pass, -Halt, -Merge and -Cleanup.
 $ErrorActionPreference = 'Continue'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $script = Join-Path $root 'skills\r-super-loop-powers\bin\parallel.ps1'
@@ -224,6 +224,72 @@ Check 'pass-halted-sibling-stops' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -
 Add-Work $p 1 'f1.txt' "one`n"
 $r = Invoke-Par $p.C1 (@('-Pass') + $fast)
 Check 'pass-halter-is-merger' ((Get-Kv $r.Out 'ROLE') -eq 'merger' -and (Get-Text (Join-Path $p.Led 'merger')).Trim() -eq '1') $r.Out
+
+# --- -Merge / -Cleanup ---
+# 両方 PASS・m2 が合流担当、まで進めた状態を返す。
+function New-Passed([string]$Name, [string]$File1 = 'f1.txt', [string]$File2 = 'f2.txt') {
+    $np = New-Prepared $Name
+    Add-Work $np 1 $File1 "one`n"
+    Add-Work $np 2 $File2 "two`n"
+    $null = Invoke-Par $np.C1 (@('-Pass') + $fast)
+    $null = Invoke-Par $np.C2 (@('-Pass') + $fast)
+    return $np
+}
+
+$p = New-Passed 'merge'
+$r = Invoke-Par $p.C1 @('-Merge')
+Check 'merge-refused-non-merger' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED') $r.Out
+[IO.File]::AppendAllText((Join-Path $p.G 'hook-log.md'), "2026-11-16 10:06 | PASS | ja-ratio=0.9 |  | m=1`n", $utf8)   # 準備したセッションの Stop フックの行
+W (Join-Path $p.Base 'app.txt') "dirty`n"
+$r = Invoke-Par $p.C2 @('-Merge')
+Check 'merge-refused-dirty-base' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and $r.Out -match 'app\.txt') $r.Out
+git -C $p.Base checkout -q -- app.txt
+$r = Invoke-Par $p.C2 @('-Merge')
+Check 'merge-ok' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and (Test-Path (Join-Path $p.Base 'f1.txt')) -and (Test-Path (Join-Path $p.Base 'f2.txt')) -and $r.Out -match '(?m)^MERGED: m1 \| [0-9a-f]{7}' -and $r.Out -match '(?m)^MERGED: m2 \| ' -and $r.Out -match '(?m)^WALL_MINUTES: \d+' -and $r.Out -match '(?m)^SERIAL_MINUTES: \d+') $r.Out
+$cl = Get-Text (Join-Path $p.G 'call-log.md'); $hl = Get-Text (Join-Path $p.G 'hook-log.md')
+Check 'merge-union-keeps-both' ($cl -match 'B-6 gate \[m1\]' -and $cl -match 'B-6 gate \[m2\]' -and $hl -match '(?m)\| m=1$' -and $hl -match '(?m)\| m=2$' -and $hl -match '10:06' -and $cl -notmatch '<<<<<<<') ($cl + $hl)
+Check 'merge-base-state-untouched' ((Get-Text (Join-Path $p.G 'state.md')) -match '(?m)^- phase: parallel$') (Get-Text (Join-Path $p.G 'state.md'))
+$pl = Get-Text (Join-Path $p.G 'parallel-log.md')
+Check 'merge-writes-parallel-log' ($pl.StartsWith('# parallel-log — g1') -and $pl -match '(?m)^## \d{4}-\d{2}-\d{2} \d{2}:\d{2} 1-one \+ 2-two$' -and $pl -match '壁時計 \d+ 分 / 直列換算 \d+ 分' -and $pl -match '(?m)^- 中止: なし$' -and $pl -match '(?m)^\| 1-one \| merged \| ' -and $pl -match '(?m)^\| 2-two \| merged \| ') $pl
+$headB = (git -C $p.Base rev-parse HEAD).Trim()
+$r = Invoke-Par $p.C2 @('-Merge')
+Check 'merge-rerun-noop' ($r.Code -eq 0 -and (git -C $p.Base rev-parse HEAD).Trim() -eq $headB -and ([regex]::Matches((Get-Text (Join-Path $p.G 'parallel-log.md')), '(?m)^## ')).Count -eq 1) $r.Out
+$r = Invoke-Par $p.C2 @('-Cleanup')
+Check 'cleanup-refused-from-child' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED') $r.Out
+$r = Invoke-Par $p.G @('-Cleanup')
+Check 'cleanup-ok' ($r.Code -eq 0 -and -not (Test-Path $p.W1) -and -not (Test-Path $p.W2) -and -not (Test-Path $p.Led) -and -not (git -C $p.Base branch --list 'rslp/g1/*') -and (Test-Path (Join-Path $p.G 'parallel-log.md'))) $r.Out
+$r = Invoke-Par $p.G @('-Status')
+Check 'status-none-after-cleanup' ((Get-Kv $r.Out 'GROUP') -eq 'none') $r.Out
+
+# 衝突(同じ実装ファイルを両方が書く)と、その後の中止。
+$p = New-Passed 'conflict' 'same.txt' 'same.txt'      # Add-Work の本文は m1 と m2 で違う
+$r = Invoke-Par $p.C2 @('-Merge')
+Check 'merge-conflict' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'CONFLICT' -and $r.Out -match '(?m)^CONFLICT_FILE: same\.txt' -and $r.Out -match '(?m)^UNMERGED: m2' -and $r.Out -match '(?m)^MERGED: m1 \| ') $r.Out
+$gj = (Get-Text (Join-Path $p.Led 'group.json')) | ConvertFrom-Json
+Check 'merge-conflict-recorded' (-not $gj.merged -and @($gj.redo).Count -eq 0 -and @($gj.conflicts).Count -eq 1 -and [string]@($gj.conflicts)[0].n -eq '2' -and @(@($gj.conflicts)[0].files) -contains 'same.txt') (Get-Text (Join-Path $p.Led 'group.json'))
+Check 'merge-conflict-aborted'(-not (git -C $p.Base rev-parse -q --verify MERGE_HEAD 2>$null) -and (Get-Text (Join-Path $p.Base 'same.txt')) -notmatch '<<<<<<<') (git -C $p.Base status | Out-String)
+$r = Invoke-Par $p.G @('-Cleanup')
+Check 'cleanup-refused-before-merge' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED') $r.Out
+$r = Invoke-Par $p.C2 @('-Halt', '-Keep', '1', '-Reason', 'merge conflict: same.txt')
+$r = Invoke-Par $p.C2 @('-Merge')
+$pl = Get-Text (Join-Path $p.G 'parallel-log.md')
+Check 'merge-after-halt-keep' ($r.Code -eq 0 -and $r.Out -match '(?m)^REDO: m2' -and $pl -match '(?m)^- 中止: m1 を残して中止\(merge conflict: same\.txt\)$' -and $pl -match '(?m)^- 合流の衝突: m2: same\.txt$' -and $pl -match '(?m)^\| 2-two \| redo \| ') ($r.Out + $pl)
+$r = Invoke-Par $p.G @('-Cleanup')
+Check 'cleanup-keeps-redo' ($r.Code -eq 0 -and -not (Test-Path $p.W1) -and (Test-Path $p.W2) -and $r.Out -match '(?m)^KEPT_BRANCH: rslp/g1/m2' -and $r.Out -match '(?m)^KEPT_WORKTREE: ' -and -not (Test-Path $p.Led)) $r.Out
+
+# 中止した側だけの合流。
+$p = New-Prepared 'solo'
+Invoke-Par $p.C1 @('-Halt', '-Reason', 'coupled') | Out-Null
+Add-Work $p 1 'f1.txt' "one`n"
+Invoke-Par $p.C1 (@('-Pass') + $fast) | Out-Null
+$r = Invoke-Par $p.C1 @('-Merge')
+Check 'merge-solo-after-halt' ($r.Code -eq 0 -and (Test-Path (Join-Path $p.Base 'f1.txt')) -and $r.Out -match '(?m)^REDO: m2' -and $r.Out -notmatch '(?m)^MERGED: m2') $r.Out
+
+# ベースが別のブランチに居る。
+$p = New-Passed 'branch'
+git -C $p.Base checkout -q -b other
+$r = Invoke-Par $p.C2 @('-Merge')
+Check 'merge-refused-wrong-branch' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and $r.Out -match 'main') $r.Out
 
 $b = [IO.File]::ReadAllBytes($script)
 Check 'script-has-bom' ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) 'save parallel.ps1 as UTF-8 with BOM'
