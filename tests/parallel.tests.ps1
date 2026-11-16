@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Tests for bin/parallel.ps1: -Prepare (checks, worktrees, ledger, state.md) and -Status.
+# Tests for bin/parallel.ps1: -Prepare (checks, worktrees, ledger, state.md), -Status, -Pass and -Halt.
 $ErrorActionPreference = 'Continue'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $script = Join-Path $root 'skills\r-super-loop-powers\bin\parallel.ps1'
@@ -153,6 +153,77 @@ $before = Get-Snapshot $d
 $r = Invoke-Par (Join-Path $d 'docs\r-super-loop-powers\g1') @('-Prepare', '-Milestones', '1-a,2-b')
 $left = Assert-Nothing $d $before
 Check 'prepare-rollback-on-child-refusal' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'FAILED' -and (Get-Kv $r.Out 'ROLLED_BACK') -eq 'yes' -and $left -eq '') ($r.Out + $left)
+
+# --- -Pass / -Halt ---
+# 準備済みのリポジトリを新しく作る。@{ Base; G; W1; W2; C1; C2; Led } を返す。
+function New-Prepared([string]$Name) {
+    $pb = New-Repo (Join-Path $t $Name) $stateLf
+    $pg = Join-Path $pb 'docs\r-super-loop-powers\g1'
+    $null = Invoke-Par $pg @('-Prepare', '-Milestones', '1-one,2-two')
+    $pw1 = Join-Path $t "$Name.rslp\g1-m1"; $pw2 = Join-Path $t "$Name.rslp\g1-m2"
+    $pc = (git -C $pb rev-parse --path-format=absolute --git-common-dir).Trim()
+    return @{ Base = $pb; G = $pg; W1 = $pw1; W2 = $pw2
+        C1 = (Join-Path $pw1 'docs\r-super-loop-powers\g1'); C2 = (Join-Path $pw2 'docs\r-super-loop-powers\g1')
+        Led = (Join-Path $pc 'rslp-parallel\g1') }
+}
+# 子の作業ツリーで「実装 1 ファイル + PASS の判定 + ログ 1 行ずつ」を作る。
+function Add-Work($P, [int]$N, [string]$File, [string]$Body) {
+    $w = @($P.W1, $P.W2)[$N - 1]; $c = @($P.C1, $P.C2)[$N - 1]; $name = @('1-one', '2-two')[$N - 1]
+    W (Join-Path $w $File) $Body
+    W (Join-Path $c "milestones\$name\gate-decision.md") "PASS`n根拠`n"
+    [IO.File]::AppendAllText((Join-Path $c 'call-log.md'), "2026-11-16 11:00 | fable | milestone-implementation | B-6 gate [m$N]`n", $utf8)
+    [IO.File]::AppendAllText((Join-Path $c 'hook-log.md'), "2026-11-16 11:00 | PASS | ja-ratio=0.9 |  | m=$N`n", $utf8)
+}
+$fast = @('-ElectTries', '2', '-ElectWaitMs', '50')
+
+$p = New-Prepared 'pass'
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+Check 'pass-refused-without-gate-decision' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and ((Get-Text (Join-Path $p.Led 'm1.json')) | ConvertFrom-Json).status -eq 'running') $r.Out
+Add-Work $p 1 'f1.txt' "one`n"
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+$row1 = (Get-Text (Join-Path $p.Led 'm1.json')) | ConvertFrom-Json
+$head1 = (git -C $p.W1 rev-parse HEAD).Trim()
+Check 'pass-first-waits' ($r.Code -eq 0 -and (Get-Kv $r.Out 'ROLE') -eq 'wait' -and $row1.status -eq 'passed' -and $row1.sha -eq $head1 -and (Get-Kv $r.Out 'SHA') -eq $head1 -and -not (Test-Path (Join-Path $p.Led 'merger'))) $r.Out
+$names = (git -C $p.W1 show --name-only --format= HEAD | Out-String)
+Check 'pass-commit-contents' ($names -match 'f1\.txt' -and $names -match 'gate-decision\.md' -and $names -match 'call-log\.md' -and $names -notmatch 'state\.md' -and $names -notmatch 'resume-') $names
+Check 'pass-leaves-state-uncommitted' ((git -C $p.W1 status --porcelain | Out-String) -match 'state\.md') (git -C $p.W1 status --porcelain | Out-String)
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+Check 'pass-rerun-idempotent' ((Get-Kv $r.Out 'ROLE') -eq 'wait' -and (git -C $p.W1 rev-parse HEAD).Trim() -eq $head1 -and ((Get-Text (Join-Path $p.Led 'm1.json')) | ConvertFrom-Json).passed -eq $row1.passed) $r.Out
+Add-Work $p 2 'f2.txt' "two`n"
+$r = Invoke-Par $p.C2 (@('-Pass') + $fast)
+Check 'pass-last-is-merger' ((Get-Kv $r.Out 'ROLE') -eq 'merger' -and (Get-Text (Join-Path $p.Led 'merger')).Trim() -eq '2' -and $r.Out -match '(?m)^NEXT: .*-Merge') $r.Out
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+Check 'pass-sibling-holds-merger' ((Get-Kv $r.Out 'ROLE') -eq 'wait' -and (Get-Text (Join-Path $p.Led 'merger')).Trim() -eq '2') $r.Out
+$r = Invoke-Par $p.C2 (@('-Pass') + $fast)
+Check 'pass-own-stale-merger' ((Get-Kv $r.Out 'ROLE') -eq 'merger') $r.Out
+$r = Invoke-Par $p.G (@('-Pass') + $fast)
+Check 'pass-refused-from-base' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED') $r.Out
+
+# A failing pre-commit hook: FAILED with git's words, the row stays running.
+$p = New-Prepared 'hook'
+$common = (git -C $p.Base rev-parse --path-format=absolute --git-common-dir).Trim()
+W (Join-Path $common 'hooks\pre-commit') "#!/bin/sh`necho blocked-by-hook >&2`nexit 1`n"
+Add-Work $p 1 'f1.txt' "one`n"
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+Check 'pass-commit-hook-fails' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'FAILED' -and $r.Out -match 'blocked-by-hook' -and ((Get-Text (Join-Path $p.Led 'm1.json')) | ConvertFrom-Json).status -eq 'running') $r.Out
+
+$p = New-Prepared 'halt'
+$r = Invoke-Par $p.C1 @('-Halt')
+Check 'halt-needs-reason' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'FAILED') $r.Out
+$r = Invoke-Par $p.C1 @('-Halt', '-Reason', 'sibling definition changes')
+$h = (Get-Text (Join-Path $p.Led 'halt.json')) | ConvertFrom-Json
+Check 'halt-written' ($r.Code -eq 0 -and $h.by -eq '1' -and $h.keep -eq '1' -and $h.reason -eq 'sibling definition changes' -and (Get-Kv $r.Out 'KEEP') -eq 'm1') $r.Out
+$r = Invoke-Par $p.C2 @('-Halt', '-Reason', 'late')
+Check 'halt-first-wins' (((Get-Text (Join-Path $p.Led 'halt.json')) | ConvertFrom-Json).by -eq '1') $r.Out
+$r = Invoke-Par $p.C2 @('-Status')
+Check 'status-shows-halt' ($r.Out -match '(?m)^HALTED: yes \| keep=m1 \| sibling definition changes') $r.Out
+Add-Work $p 2 'f2.txt' "two`n"
+$before = (git -C $p.W2 rev-parse HEAD).Trim()
+$r = Invoke-Par $p.C2 (@('-Pass') + $fast)
+Check 'pass-halted-sibling-stops' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'HALTED' -and (git -C $p.W2 rev-parse HEAD).Trim() -eq $before) $r.Out
+Add-Work $p 1 'f1.txt' "one`n"
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+Check 'pass-halter-is-merger' ((Get-Kv $r.Out 'ROLE') -eq 'merger' -and (Get-Text (Join-Path $p.Led 'merger')).Trim() -eq '1') $r.Out
 
 $b = [IO.File]::ReadAllBytes($script)
 Check 'script-has-bom' ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) 'save parallel.ps1 as UTF-8 with BOM'

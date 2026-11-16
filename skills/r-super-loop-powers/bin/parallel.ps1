@@ -3,7 +3,9 @@
   parallel.ps1 -- two milestones in two git worktrees, one ledger in the git common dir.
     -Prepare -Milestones "1-foo,2-bar"   split the base into two child worktrees
     -Status                              show the group as seen from the calling work tree
-    -Pass / -Halt / -Merge / -Cleanup    (later tasks)
+    -Pass                                (child) pin the PASS commit, mark the row passed, elect the merger
+    -Halt -Reason <text> [-Keep <n>]     (child) stop parallel work; only the kept milestone goes on
+    -Merge / -Cleanup                    (later tasks)
   Ledger: <git common dir>\rslp-parallel\<goal-slug>\ (group.json, m<n>.json, merger, halt.json).
   Branches rslp/<slug>/m<n>; worktrees <WorktreeRoot>\<slug>-m<n>.
   stdout is "KEY: value" (UTF-8; the wording is ASCII, paths are printed as they are); STATUS is OK / REFUSED / FAILED / CONFLICT / HALTED, and
@@ -322,6 +324,139 @@ function Invoke-Prepare {
     exit 0
 }
 
+# status of m<n>.json, read again from disk (the sibling may have just written it).
+function Get-RowStatus([string]$Dir, [string]$N) {
+    $row = Read-JsonFile (Join-Path $Dir "m$N.json")
+    if ($null -eq $row -or -not $row.status) { return '' }
+    return [string]$row.status
+}
+
+# Returns 'merger' or 'wait'. Each child marks its own row passed BEFORE it tries to
+# create 'merger'; a creator whose sibling is not passed yet deletes the file and looks
+# at the sibling once more. So neither "both wait" nor "both merge" can happen.
+function Select-Merger($Ledger, [string]$Self, [string]$Sibling, [bool]$HaltKeepsSelf) {
+    $file = Join-Path $Ledger.Dir 'merger'
+    for ($i = 0; $i -lt $ElectTries; $i++) {
+        $mine = $false
+        try {
+            $fs = [IO.File]::Open($file, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+            try { $b = [Text.Encoding]::ASCII.GetBytes($Self); $fs.Write($b, 0, $b.Length) } finally { $fs.Dispose() }
+            $mine = $true
+        } catch [IO.IOException] {
+            if ((Read-TextFile $file).Trim() -eq $Self) { return 'merger' }   # our own mark from an earlier run
+        }
+        if ($mine) {
+            if ($HaltKeepsSelf -or (Get-RowStatus $Ledger.Dir $Sibling) -eq 'passed') { return 'merger' }
+            Remove-Item -LiteralPath $file -Force
+            if ((Get-RowStatus $Ledger.Dir $Sibling) -ne 'passed') { return 'wait' }
+            continue                                                         # the sibling passed right after the delete
+        }
+        Start-Sleep -Milliseconds $ElectWaitMs                               # the sibling is deciding: wait for it to delete or keep
+    }
+    return 'wait'                                                            # the sibling's mark stayed: it merges
+}
+
+# The calling child's number, its milestone entry and the sibling's number; REFUSED otherwise.
+function Get-ChildContext($L, [string]$Mode) {
+    if ($L.Role -ne 'child') { Stop-Refused "-$Mode runs in a child worktree of a parallel group (this work tree is: $($L.Role))" "run parallel.ps1 -GoalDir `"$GoalDir`" -Status" }
+    $me = $null; $sib = $null
+    foreach ($m in @($L.Group.milestones)) { if ([string]$m.n -eq $L.Self) { $me = $m } else { $sib = [string]$m.n } }
+    return @{ Self = $L.Self; Me = $me; Sibling = $sib }
+}
+
+function Invoke-Pass {
+    $L = Get-Ledger $GoalDir
+    $C = Get-ChildContext $L 'Pass'
+    $self = $C.Self
+    $haltKeepsSelf = $false
+    if ($null -ne $L.Halt) {
+        if ([string]$L.Halt.keep -ne $self) {
+            Write-Kv 'STATUS' 'HALTED'
+            Write-Kv 'REASON' ('parallel was halted by m{0} (keep=m{1}): {2}' -f [string]$L.Halt.by, [string]$L.Halt.keep, [string]$L.Halt.reason)
+            Write-Kv 'NEXT' 'stop; this milestone will be redone serially in the base worktree'
+            exit 1
+        }
+        $haltKeepsSelf = $true
+    }
+    $gateFile = Join-Path $GoalDir ('milestones\' + [string]$C.Me.name + '\gate-decision.md')
+    if (-not (Test-Path -LiteralPath $gateFile -PathType Leaf)) { Stop-Refused "no gate decision: $gateFile" 'run the B-6 gate first; -Pass only pins a PASS' }
+    if (-not [regex]::IsMatch((Read-TextFile $gateFile), '\bPASS\b')) { Stop-Refused "gate-decision.md is not a PASS: $gateFile" 'fix the milestone and run the B-6 gate again' }
+
+    # --- 1. the pinned PASS commit (state.md and resume-* stay out) ---
+    $top = $L.Top
+    $prefix = ''
+    if ($L.GoalRel) { $prefix = $L.GoalRel + '/' }
+    $spec = @('--', '.', ":(exclude)${prefix}state.md", ":(exclude)${prefix}resume-*")
+    $add = Invoke-Git $top (@('add', '-A') + $spec)
+    if ($add.Code -ne 0) { Stop-Failed ('git add failed: ' + $add.Out) '' }
+    $staged = Invoke-Git $top @('diff', '--cached', '--quiet')
+    if ($staged.Code -ne 0) {
+        $slug = [string]$L.Group.slug
+        $ci = Invoke-Git $top @('commit', '-q', '-m', "rslp: m$self PASS ($slug, parallel)")
+        if ($ci.Code -ne 0) {
+            $null = Invoke-Git $top (@('reset', '-q') + $spec)                # leave the index as it was
+            $tail = $ci.Out
+            if ($tail.Length -gt 300) { $tail = $tail.Substring($tail.Length - 300) }
+            Stop-Failed ('git commit failed: ' + $tail) 'fix the cause (for example the pre-commit hook), then run -Pass again'
+        }
+    }
+    $headR = Invoke-Git $top @('rev-parse', 'HEAD')
+    if ($headR.Code -ne 0) { Stop-Failed ('git rev-parse HEAD failed: ' + $headR.Out) '' }
+    $sha = $headR.Out
+
+    # --- 2. our row: passed (the first passed time stays) ---
+    $old = $L.Rows[$self]
+    $passedAt = (Get-Date).ToString('o')
+    $started = $null
+    if ($null -ne $old) {
+        $started = $old.started
+        if ([string]$old.status -eq 'passed' -and $old.passed) { $passedAt = [string]$old.passed }
+    }
+    $row = [ordered]@{ n = $self; status = 'passed'; started = $started; passed = $passedAt; sha = $sha }
+    Write-ExitFile (Join-Path $L.Dir "m$self.json") ($row | ConvertTo-Json)
+
+    # --- 3. election ---
+    $role = Select-Merger $L $self $C.Sibling $haltKeepsSelf
+    Write-Kv 'SHA' $sha
+    Write-Kv 'ROLE' $role
+    Write-Kv 'STATUS' 'OK'
+    if ($role -eq 'merger') { Write-Kv 'NEXT' "parallel.ps1 -Merge -GoalDir `"$GoalDir`"" }
+    else { Write-Kv 'NEXT' 'tell the human this milestone passed and the other session will merge; end this session' }
+    exit 0
+}
+
+function Invoke-Halt {
+    $L = Get-Ledger $GoalDir
+    $C = Get-ChildContext $L 'Halt'
+    $self = $C.Self
+    if (-not $Reason.Trim()) { Stop-Failed '-Halt needs -Reason <text>' 'pass -Reason "<why parallel cannot go on>"' }
+    $keepN = $Keep.Trim().TrimStart('m')
+    if (-not $keepN) { $keepN = $self }
+    if ($keepN -ne $self -and $keepN -ne $C.Sibling) { Stop-Failed "-Keep must be $self or $($C.Sibling) (got $Keep)" '' }
+
+    # Exclusive create: write a temp file, then a move that fails when halt.json exists.
+    $file = Join-Path $L.Dir 'halt.json'
+    $h = [ordered]@{ by = $self; keep = $keepN; reason = $Reason.Trim(); at = (Get-Date).ToString('o') }
+    $tmp = $file + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+    Write-TextFile $tmp ($h | ConvertTo-Json)
+    $already = $false
+    try { [IO.File]::Move($tmp, $file) }
+    catch [IO.IOException] {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+        $existing = Read-JsonFile $file
+        if ($null -eq $existing) { throw }
+        $h = $existing
+        $already = $true
+    }
+    Write-Kv 'HALTED_BY' ('m' + [string]$h.by)
+    Write-Kv 'KEEP' ('m' + [string]$h.keep)
+    if ($already) { Write-Kv 'ALREADY' ('yes | ' + [string]$h.reason) }
+    Write-Kv 'STATUS' 'OK'
+    if ([string]$h.keep -eq $self) { Write-Kv 'NEXT' 'ask the human to tell the other session "parallel is halted"; continue this milestone and run -Pass when B-6 passes' }
+    else { Write-Kv 'NEXT' 'stop; this milestone will be redone serially in the base worktree' }
+    exit 0
+}
+
 # --- main ---
 $modes = @()
 foreach ($m in @('Prepare', 'Status', 'Pass', 'Merge', 'Halt', 'Cleanup')) { if ($PSBoundParameters.ContainsKey($m) -and $PSBoundParameters[$m]) { $modes += $m } }
@@ -332,5 +467,7 @@ $GoalDir = (Resolve-Path -LiteralPath $GoalDir).Path
 switch ($modes[0]) {
     'Prepare' { Invoke-Prepare }
     'Status' { Invoke-Status }
+    'Pass' { Invoke-Pass }
+    'Halt' { Invoke-Halt }
     default { Stop-Failed 'not implemented' '' }
 }
