@@ -6,7 +6,7 @@
     -Pass / -Halt / -Merge / -Cleanup    (later tasks)
   Ledger: <git common dir>\rslp-parallel\<goal-slug>\ (group.json, m<n>.json, merger, halt.json).
   Branches rslp/<slug>/m<n>; worktrees <WorktreeRoot>\<slug>-m<n>.
-  stdout is ASCII "KEY: value"; STATUS is OK / REFUSED / FAILED / CONFLICT / HALTED, and
+  stdout is "KEY: value" (UTF-8; the wording is ASCII, paths are printed as they are); STATUS is OK / REFUSED / FAILED / CONFLICT / HALTED, and
   anything but OK exits 1. REFUSED and FAILED leave nothing behind.
   Saved as UTF-8 with BOM: the state.md keys and the wait text are Japanese.
 #>
@@ -26,20 +26,17 @@ $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
 . (Join-Path $PSScriptRoot 'codex-common.ps1')
 
-# stdout stays ASCII (console code pages differ between hosts).
-function ConvertTo-Ascii([string]$Text) { return ($Text -replace '[^\x00-\x7F]', '?') }
-
 function Stop-Failed([string]$Reason, [string]$Next) {
     Write-Kv 'STATUS' 'FAILED'
-    Write-Kv 'REASON' (ConvertTo-Ascii $Reason)
-    if ($Next) { Write-Kv 'NEXT' (ConvertTo-Ascii $Next) }
+    Write-Kv 'REASON' $Reason
+    if ($Next) { Write-Kv 'NEXT' $Next }
     exit 1
 }
 
 function Stop-Refused([string]$Reason, [string]$Next) {
     Write-Kv 'STATUS' 'REFUSED'
-    Write-Kv 'REASON' (ConvertTo-Ascii $Reason)
-    if ($Next) { Write-Kv 'NEXT' (ConvertTo-Ascii $Next) }
+    Write-Kv 'REASON' $Reason
+    if ($Next) { Write-Kv 'NEXT' $Next }
     exit 1
 }
 
@@ -140,10 +137,10 @@ function Invoke-Status {
         exit 0
     }
     $ms = @($L.Group.milestones)
-    Write-Kv 'GROUP' (ConvertTo-Ascii ((@($ms | ForEach-Object { [string]$_.name })) -join ' + '))
+    Write-Kv 'GROUP' ((@($ms | ForEach-Object { [string]$_.name })) -join ' + ')
     Write-Kv 'ROLE' $L.Role
     if ($L.Role -eq 'child') { Write-Kv 'SELF' ('m' + $L.Self) }
-    Write-Kv 'BASE' (ConvertTo-Ascii ([string]$L.Group.base))
+    Write-Kv 'BASE' ([string]$L.Group.base)
     foreach ($m in $ms) {
         $n = [string]$m.n
         $row = $L.Rows[$n]
@@ -152,10 +149,10 @@ function Invoke-Status {
             if ($row.status) { $st = [string]$row.status }
             if ($row.sha) { $sha = [string]$row.sha }
         }
-        Write-Kv 'CHILD' (ConvertTo-Ascii ('m{0} | {1} | {2} | {3}' -f $n, $st, $sha, [string]$m.worktree))
+        Write-Kv 'CHILD' ('m{0} | {1} | {2} | {3}' -f $n, $st, $sha, [string]$m.worktree)
     }
     if ($L.Merger) { Write-Kv 'MERGER' $L.Merger } else { Write-Kv 'MERGER' '-' }
-    if ($null -ne $L.Halt) { Write-Kv 'HALTED' (ConvertTo-Ascii ('yes | keep=m{0} | {1}' -f [string]$L.Halt.keep, [string]$L.Halt.reason)) }
+    if ($null -ne $L.Halt) { Write-Kv 'HALTED' ('yes | keep=m{0} | {1}' -f [string]$L.Halt.keep, [string]$L.Halt.reason) }
     else { Write-Kv 'HALTED' 'no' }
     if ($L.Group.merged) { Write-Kv 'MERGED' ([string]$L.Group.merged) } else { Write-Kv 'MERGED' '-' }
     Write-Kv 'STATUS' 'OK'
@@ -311,15 +308,15 @@ function Invoke-Prepare {
         elseif (Test-Path -LiteralPath $attrFile) { Remove-Item -LiteralPath $attrFile -Force -ErrorAction SilentlyContinue }
         [IO.File]::WriteAllBytes($stateFile, $stateBytes)
         Write-Kv 'STATUS' 'FAILED'
-        Write-Kv 'REASON' (ConvertTo-Ascii $why)
+        Write-Kv 'REASON' $why
         Write-Kv 'ROLLED_BACK' 'yes'
         Write-Kv 'NEXT' 'fix the cause, then run -Prepare again'
         exit 1
     }
 
-    foreach ($it in $items) { Write-Kv 'WORKTREE' (ConvertTo-Ascii "m$($it.n) | $($it.worktree)") }
-    foreach ($it in $items) { Write-Kv 'BRANCH' (ConvertTo-Ascii "m$($it.n) | $($it.branch)") }
-    Write-Kv 'LEDGER' (ConvertTo-Ascii $L.Dir)
+    foreach ($it in $items) { Write-Kv 'WORKTREE' "m$($it.n) | $($it.worktree)" }
+    foreach ($it in $items) { Write-Kv 'BRANCH' "m$($it.n) | $($it.branch)" }
+    Write-Kv 'LEDGER' $L.Dir
     Write-Kv 'STATUS' 'OK'
     Write-Kv 'NEXT' 'ask the human to open a new session in each WORKTREE folder and send "continue"; close this session'
     exit 0

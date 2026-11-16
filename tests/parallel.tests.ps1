@@ -41,8 +41,18 @@ function New-Repo([string]$Dir, [string]$StateText) {
     git -C $Dir add -A 2>$null; git -C $Dir commit -q -m init 2>$null
     return $Dir
 }
-# '' when a refused -Prepare left nothing behind; otherwise what it left.
-function Assert-Nothing([string]$Base, [byte[]]$StateBefore) {
+# state.md and info/attributes as they are before a -Prepare call ($null = absent).
+function Get-Snapshot([string]$Base) {
+    $common = (git -C $Base rev-parse --path-format=absolute --git-common-dir).Trim()
+    $snap = @{ State = $null; Attr = $null }
+    $sf = Join-Path $Base 'docs\r-super-loop-powers\g1\state.md'
+    $af = Join-Path $common 'info\attributes'
+    if (Test-Path -LiteralPath $sf) { $snap.State = [Convert]::ToBase64String([IO.File]::ReadAllBytes($sf)) }
+    if (Test-Path -LiteralPath $af) { $snap.Attr = [Convert]::ToBase64String([IO.File]::ReadAllBytes($af)) }
+    return $snap
+}
+# '' when a refused / failed -Prepare left nothing behind; otherwise what it left.
+function Assert-Nothing([string]$Base, $Before) {
     $bad = @()
     $wt = @(git -C $Base worktree list 2>$null)
     if ($wt.Count -ne 1) { $bad += "worktrees: $($wt -join '; ')" }
@@ -50,11 +60,13 @@ function Assert-Nothing([string]$Base, [byte[]]$StateBefore) {
     if ($br.Count -ne 0) { $bad += "branches: $($br -join '; ')" }
     $common = (git -C $Base rev-parse --path-format=absolute --git-common-dir).Trim()
     if (Test-Path -LiteralPath (Join-Path $common 'rslp-parallel\g1')) { $bad += 'ledger dir exists' }
-    $now = [IO.File]::ReadAllBytes((Join-Path $Base 'docs\r-super-loop-powers\g1\state.md'))
-    if ([Convert]::ToBase64String($now) -ne [Convert]::ToBase64String($StateBefore)) { $bad += 'state.md changed' }
+    $now = Get-Snapshot $Base
+    if ($now.State -ne $Before.State) { $bad += 'state.md changed' }
+    if ($now.Attr -ne $Before.Attr) { $bad += 'info/attributes changed' }
+    $rslp = Join-Path (Split-Path -Parent $Base) ((Split-Path -Leaf $Base) + '.rslp')
+    if (Test-Path -LiteralPath $rslp) { $bad += "worktree folder exists: $rslp" }
     return ($bad -join "`n")
 }
-function Get-StateBytes([string]$Base) { return [IO.File]::ReadAllBytes((Join-Path $Base 'docs\r-super-loop-powers\g1\state.md')) }
 
 $t = Join-Path ([IO.Path]::GetTempPath()) ('par-' + [guid]::NewGuid().ToString('N'))
 $stateLf = "# state — g1`n- phase: goal-definition`n- 強度: MVP`n- milestone: -`n- 次のCheckpoint: 2-two`n- 担当: opus-main`n- 次のゲート: goal-gate`n- 待ち: -`n- skill-dir: C:\skill`n- codex-env: C:\env.json`n- codex-run: -`n- updated: 2026-11-16 10:00`n"
@@ -89,7 +101,7 @@ Check 'prepare-twice-refused' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq '
 
 # --- refusals: a fresh repo each, and nothing may be left behind ---
 function Test-Refused([string]$Name, [string]$Dir, [string]$Milestones, [string]$ReasonPart) {
-    $before = Get-StateBytes $Dir
+    $before = Get-Snapshot $Dir
     $r = Invoke-Par (Join-Path $Dir 'docs\r-super-loop-powers\g1') @('-Prepare', '-Milestones', $Milestones)
     $left = Assert-Nothing $Dir $before
     $ok = ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and $left -eq '')
@@ -125,6 +137,22 @@ git -C $d add -A 2>$null; git -C $d commit -q --amend --no-edit 2>$null
 $r = Invoke-Par (Join-Path $d 'docs\r-super-loop-powers\g1') @('-Prepare', '-Milestones', '1-a,2-b')
 $sc = Get-Text (Join-Path $t 'ok-crlf.rslp\g1-m1\docs\r-super-loop-powers\g1\state.md')
 Check 'prepare-crlf-state' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and $sc.Contains("`r`n- parallel-base: ") -and -not ($sc -match '(?<!\r)\n')) ($r.Out + $sc)
+
+# Paths on stdout keep their non-ASCII characters (the orchestrator hands them to the human).
+$d = New-Repo (Join-Path $t '作業 app') $stateLf
+$r = Invoke-Par (Join-Path $d 'docs\r-super-loop-powers\g1') @('-Prepare', '-Milestones', '1-a,2-b')
+$wj = Join-Path $t '作業 app.rslp\g1-m1'
+$mkj = Get-Text (Join-Path $wj 'docs\r-super-loop-powers\g1\resume-pending')
+Check 'prepare-nonascii-path' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and $r.Out -match ('(?m)^WORKTREE: m1 \| ' + [regex]::Escape($wj) + '\r?$') -and $mkj -match ('(?m)^cwd: ' + [regex]::Escape($wj) + '$')) ($r.Out + $mkj)
+
+# Late failure: the base has an uncommitted design.md row, so the base passes the gate and
+# the children (committed copy, no design.md) are refused -> everything is rolled back.
+$d = New-Repo (Join-Path $t 'rb-design') ($stateLf.Replace('- phase: goal-definition', '- phase: learning').Replace('- milestone: -', '- milestone: 0-zero'))
+W (Join-Path $d 'docs\r-super-loop-powers\design.md') "| 2026-11-16 | g1 | CP:0-zero | x |`n"
+$before = Get-Snapshot $d
+$r = Invoke-Par (Join-Path $d 'docs\r-super-loop-powers\g1') @('-Prepare', '-Milestones', '1-a,2-b')
+$left = Assert-Nothing $d $before
+Check 'prepare-rollback-on-child-refusal' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'FAILED' -and (Get-Kv $r.Out 'ROLLED_BACK') -eq 'yes' -and $left -eq '') ($r.Out + $left)
 
 $b = [IO.File]::ReadAllBytes($script)
 Check 'script-has-bom' ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) 'save parallel.ps1 as UTF-8 with BOM'
