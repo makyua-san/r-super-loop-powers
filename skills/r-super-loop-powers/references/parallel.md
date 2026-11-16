@@ -8,7 +8,7 @@ SKILL.md の起動時チェック 9 から読まれる(state.md の phase が `p
 
 同じ Checkpoint に 2 つ以上のマイルストーンがあるときだけ行う。
 
-- **技術PM**: 実装アセスの依頼文に足す: 「同じ Checkpoint の中で、触るファイルとインターフェースが重ならないマイルストーンの組を `## PARALLEL` 節に出せ。組ごとに、根拠(触るファイルの一覧が重ならないこと)と、新しい作業ツリーで最初に要る準備(依存の導入コマンド・コピーが要る未追跡ファイル)を書け。無ければ `PARALLEL: none`」
+- **技術PM**: 実装アセスの依頼文に足す: 「同じ Checkpoint の中で、触るファイルとインターフェースが重ならないマイルストーンの組を `## PARALLEL` 節に出せ。組ごとに、根拠(触るファイルの一覧が重ならないこと)と、新しい作業ツリーで最初に要る準備(依存の導入コマンド・コピーが要るファイル(`.gitignore` で無視されているものに限る。無視されていない未追跡ファイルは `-Pass` が拒否する))を書け。無ければ `PARALLEL: none`」
 - **代理Fable**: 「同じ Checkpoint の中で、要件と受け入れ条件が互いに独立なマイルストーンの組を挙げよ。片方の結果がもう片方の受け入れ条件を変える組は挙げるな。無ければ『なし』」と聞く(`loop-log.ps1 -Who fable`)。
 - **両方が挙げた組だけ**を候補にし、goal-plan.md の `## 並行候補` に表で書く: 組 / Fable の根拠 / 技術PM の根拠 / 作業ツリーの準備 / 了承。1 つの Checkpoint に候補が複数あっても、同時に走らせるのは 1 組。
 - A-8 の提示に並行候補を含め、利用者の了承を得る(表の「了承」に日付を書く)。了承のない組は並行しない。
@@ -23,8 +23,8 @@ SKILL.md の起動時チェック 9 から読まれる(state.md の phase が `p
    powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\parallel.ps1" -Prepare `
      -GoalDir "<goal-dir>" -Milestones "<a>,<b>"
    ```
-   `WORKTREE:` が 2 行出る。`REFUSED` は `REASON:` / `NEXT:` に従う(未コミットの変更がある・ブランチに居ない・高信頼・設計書の行が無い、など)。`FAILED` で `ROLLED_BACK: yes` が出たら、途中で失敗して元に戻してある(多くは設計書など `docs/r-super-loop-powers/` の未コミットが原因。コミットして再実行する)。
-3. 利用者に頼んでターンを終える: 「次の 2 つのフォルダで、それぞれ新しいセッションを開いて『続けて』と送ってください: <WORKTREE 1> / <WORKTREE 2>。このフォルダのセッションは閉じて構いません」。セッションを自動で開く手段は無い。`RSLP_HOOK_CHILD=1` を設定したシェルからは開かない(フックが止まる)。
+   `WORKTREE:` が 2 行出る。`REFUSED` は `REASON:` / `NEXT:` に従う(未コミットの変更がある・ブランチに居ない・高信頼・設計書の行が無い、など)。ループの記録(`docs/r-super-loop-powers/`)以外の未コミットの変更が理由なら、自分でコミットも退避もせず、利用者に扱いを聞く。`FAILED` で `ROLLED_BACK: yes` が出たら、途中で失敗して元に戻してある(多くは設計書など `docs/r-super-loop-powers/` の未コミットが原因。コミットして再実行する)。
+3. 利用者に頼んでターンを終える: 「次の 2 つのフォルダで、それぞれ新しいセッションを開いて『続けて』と送ってください: <WORKTREE 1> / <WORKTREE 2>。このフォルダのセッションは閉じて構いません」。再開パケットが出ないフォルダでは `/r-super-loop-powers` を起動してもらう。セッションを自動で開く手段は無い。`RSLP_HOOK_CHILD=1` を設定したシェルからは開かない(フックが止まる)。
 
 このフォルダ(ベース)の state.md は phase `parallel` になる。ここで起動されたら作業せず、`parallel.ps1 -Status -GoalDir "<goal-dir>"` の結果(どのフォルダが何をしているか)を利用者に伝える。
 
@@ -42,19 +42,22 @@ SKILL.md の起動時チェック 9 から読まれる(state.md の phase が `p
   - `ROLE: wait` → 兄弟がまだ。`loop-log.ps1 -SetWait "兄弟 <名前> の完了待ち(合流は相手のセッションが行う)"` を書き、利用者に「このマイルストーンは PASS。もう片方が終わると、そちらのセッションが合流する。このセッションは閉じてよい」と伝えて終わる。
   - `ROLE: merger` → 4 へ。
   - `STATUS: HALTED` → 5 の「止められた側」。
+  - `STATUS: REFUSED` → `REASON:` に従って直す(ベースで未追跡のファイルを子がコミットしようとした、など)。
   - `STATUS: FAILED` → コミットできていない。`REASON:` を利用者に示して待つ(境界(a))。
 
 ## 4. 合流(合流担当の子)
 
 1. `parallel.ps1 -Merge -GoalDir "<goal-dir>"`。ベースの作業ツリーで、ベースのゴール記録をコミットしてから、PASS 時の SHA を番号順にマージする。
    - `STATUS: REFUSED`(ベースに未コミットの変更がある・別のブランチに居る、など)→ `REASON:` を利用者に伝えて待つ(境界(a))。
-   - `STATUS: CONFLICT` → マージは取り消されている。`CONFLICT_FILE:` が全部 `docs/r-super-loop-powers/` の下なら、`git -C "<ベース>" merge <SHA>` をやり直し、両方の内容を残して解消・コミットしてから `-Merge` を再実行する。実装ファイルが含まれるなら見立て外れ: `parallel.ps1 -Halt -GoalDir "<goal-dir>" -Keep <マージ済みの番号> -Reason "merge conflict: <ファイル>"` のあと `-Merge` を再実行する(`REDO:` に出たマイルストーンは直列でやり直す)。残せるのはマージ済みの方だけで、`-Keep` に未マージの番号を渡すと拒否される(`NEXT:` に正しいコマンドが出る)。1 本目から衝突したら、利用者に報告して待つ。
-2. 全体の検証: 合流した各マイルストーンの submission.md の「検証」のコマンドを**ベースの作業ツリー**で実行する(失敗行だけ見る)。失敗したら見立て外れとして、番号の大きい方を直列でやり直す(3 の milestone をそれにする)。
+   - `STATUS: FAILED` → `REASON:` を利用者に示して待つ(境界(a))。ベースのファイルを自分で動かさない。再実行は安全。
+   - `STATUS: CONFLICT` → マージは取り消されている。`CONFLICT_FILE:` が全部 `docs/r-super-loop-powers/` の下なら、`git -C "<ベース>" merge <SHA>`(`<SHA>` は `UNMERGED: m<n> | <SHA>` の行にある)をやり直し、両方の行を残して解消(state.md だけはベースの内容を残す)・コミットしてから `-Merge` を再実行する。実装ファイルが含まれるなら見立て外れ: `parallel.ps1 -Halt -GoalDir "<goal-dir>" -Keep <マージ済みの番号> -Reason "merge conflict: <ファイル>"` のあと `-Merge` を再実行する(`REDO:` に出たマイルストーンは直列でやり直す)。残せるのはマージ済みの方だけで、`-Keep` に未マージの番号を渡すと拒否される(`NEXT:` に正しいコマンドが出る)。1 本目から衝突したら、利用者に報告して待つ。
+2. 全体の検証: 合流した各マイルストーンの submission.md の「検証」のコマンドを**ベースの作業ツリー**で実行する(失敗行だけ見る)。失敗したら見立て外れとして、番号の大きい方を直列でやり直す(3 の milestone をそれにする)。ベースの `parallel-log.md` の最後の節に `- 合流後の検証: 失敗(<コマンド>)` を 1 行足す。
 3. ベースの state.md を戻して印を置く(`<ベースの goal-dir>` は `parallel-base:` の下の同じ相対パス):
    - 組に Checkpoint が含まれ、やり直しが無い:
-     `loop-log.ps1 -GoalDir "<ベースの goal-dir>" -SetPhase human-acceptance -SetMilestone "<Checkpoint>" -SetGate human-acceptance -SetWait "並行の後片付け(parallel.ps1 -Cleanup)をしてから B-7" -Mark`
+     `loop-log.ps1 -GoalDir "<ベースの goal-dir>" -SetPhase human-acceptance -SetMilestone "<Checkpoint>" -SetGate human-acceptance -SetWait "並行の後片付け(references/parallel.md 6)をしてから B-7" -Mark`
    - それ以外:
-     `loop-log.ps1 -GoalDir "<ベースの goal-dir>" -SetPhase milestone-implementation -SetMilestone "<次、またはやり直すマイルストーン>" -SetGate impl-gate -SetWait "並行の後片付け(parallel.ps1 -Cleanup)をしてから B-1" -Mark`
+     `loop-log.ps1 -GoalDir "<ベースの goal-dir>" -SetPhase milestone-implementation -SetMilestone "<次、またはやり直すマイルストーン>" -SetGate impl-gate -SetWait "並行の後片付け(references/parallel.md 6)をしてから B-1" -Mark`
+     やり直すマイルストーンがあるときは、待ちに理由も書く: `-SetWait "並行の後片付け(references/parallel.md 6)をしてから B-1(<名前> をやり直す: <理由>。references/parallel.md 5)"`
 4. 利用者に頼んで終わる: 「合流が済んだ。ベースのフォルダ <パス> で新しいセッションを開いて『続けて』と送ってください。並行の 2 つのセッションは閉じてください」。
 
 ## 5. 見立てが外れたとき
@@ -63,9 +66,10 @@ SKILL.md の起動時チェック 9 から読まれる(state.md の phase が `p
 
 - **気づいた側**: `parallel.ps1 -Halt -GoalDir "<goal-dir>" -Reason "<理由>"`。利用者に「もう片方のセッションに『並行を中止』と伝えてください」と頼む。自分のマイルストーンはそのまま続け、B-6 PASS で `-Pass`(`ROLE: merger` になる)→ 4。合流されるのは自分だけで、兄弟は `REDO:` になる。
 - **止められた側**(`-Status` の `HALTED: yes`、または `-Pass` の `STATUS: HALTED`): 作業を止め、`loop-log.ps1 -SetWait "並行を中止(直列でやり直す)"` を書いて終わる。作業ツリーとブランチは参考として残る。
-- **やり直し**: ベースで B-1 から。委譲文の TECHNICAL ASSESSMENT の後に「途中までの変更がブランチ `rslp/<goal-slug>/m<n>` にある。使えるものは取り込め」と書いてよい。
+- **どちらも PASS できない・並行そのものをやめる**: 人間が決める。ベースのフォルダで `parallel.ps1 -Cleanup -Abandon -GoalDir "<goal-dir>"` を実行し(作業ツリーとブランチは残り、台帳が消え、`parallel-log.md` に打ち切りの節が残る)、`loop-log.ps1 -SetPhase milestone-implementation -SetMilestone "<先にやる方>" -SetGate impl-gate -Clear 待ち` で state.md を戻して、直列でやり直す。
+- **やり直し**: ベースで B-1 から。委譲文の TECHNICAL ASSESSMENT の後に「途中までの変更がブランチ `rslp/<goal-slug>/m<n>` にある。使えるものは取り込め」と書いてよい。やり直したマイルストーンが B-6 PASS し、この組の Checkpoint のマイルストーンが合流済みなら、次の B-1 ではなく B-7 へ進む(`-SetPhase human-acceptance -SetMilestone "<Checkpoint>" -SetGate human-acceptance`)。やり直しがベースにマージされたら、残した作業ツリーとブランチは要らない。利用者に 2 つのコマンドを伝える: `git worktree remove --force <パス>`、`git branch -D <ブランチ>`。
 - retro の「無駄だった呼び出し・手戻り」に「疎結合の見立て外れ」として残す。
 
 ## 6. 後片付け(合流後、ベースのセッションの最初)
 
-再開パケットの「待ち」に後片付けとあれば、`parallel.ps1 -Cleanup -GoalDir "<goal-dir>"` を実行し、`loop-log.ps1 -Clear 待ち` してから続ける。子の作業ツリー・マージ済みのブランチ・台帳が消える。`WARN:` は、子のセッションが開いたまま等で消せなかったもの(続行は止めない。利用者に閉じてもらって再実行する)。`KEPT_WORKTREE:` / `KEPT_BRANCH:` は、やり直し用に残したもの。区間の記録は `<goal-dir>/parallel-log.md` に残り、retro の観測に使う。
+ベースのセッションは、再開パケットの「待ち」がこの節(`references/parallel.md 6`)を名指ししているので、このファイルを開く。「待ち」に後片付けとあれば、`parallel.ps1 -Cleanup -GoalDir "<goal-dir>"` を実行し、`loop-log.ps1 -Clear 待ち` してから続ける。子の作業ツリー・マージ済みのブランチ・台帳が消える。`WARN:` は、子のセッションが開いたまま等で消せなかったもの(続行は止めない。利用者に閉じてもらって再実行する)。未コミットの変更が残っている子も `WARN:` で残る: 利用者に変更の扱いを聞き、捨ててよいと言われてから `parallel.ps1 -Cleanup -Force -GoalDir "<goal-dir>"` を実行する。`KEPT_WORKTREE:` / `KEPT_BRANCH:` は、やり直し用に残したもの。区間の記録は `<goal-dir>/parallel-log.md` に残り、retro の観測に使う。

@@ -86,7 +86,7 @@ state.md を読み直す。
 前提確認: submission.md が存在し、検証証拠と残存未知リストが含まれること。
 共通契約に従い goal-frame.md + マイルストーン定義 + submission.md + assumptions.md の未検証仮定を渡し、判定観点で「このマイルストーンのゴールを満たし、残存未知が許容可能か」を判定させる。MVPでは、goal-frame.md の「運用で見る懸念」は利用者が許容した未知として扱い、確かめていないことを差し戻しの理由にしないと依頼文に書く。結果を `gate-decision.md` に保存し、`loop-log.ps1 -Who fable` で記録する。
 - PASS + **並行の子**(state.md に `parallel-base:` がある)→ 中間コミットも B-7 も行わず、`references/parallel.md` 3 の `-Pass` へ
-- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)+グラレコの送り先(下記 Learning 2b。あれば)→ 中間コミット → `loop-log.ps1 -SetMilestone "<次>" -SetGate impl-gate`。文脈メーターの通知「境界リセットの目安を超えている」が出ていれば `-Mark` も付けて**境界リセット**(境界(b))し、人間に `/clear` と「続けて」を頼んでターンを終える。出ていなければ**人間承認なしで次のB-1へ**次が了承済みの並行の組なら、`-SetMilestone` の代わりに `references/parallel.md` 2。
+- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)+グラレコの送り先(下記 Learning 2b。あれば)→ 中間コミット → `loop-log.ps1 -SetMilestone "<次>" -SetGate impl-gate`。文脈メーターの通知「境界リセットの目安を超えている」が出ていれば `-Mark` も付けて**境界リセット**(境界(b))し、人間に `/clear` と「続けて」を頼んでターンを終える。出ていなければ**人間承認なしで次のB-1へ**。次が了承済みの並行の組なら、`-SetMilestone` の代わりに `references/parallel.md` 2。
 - PASS + Checkpointマイルストーン(MVP)または高信頼 → `loop-log.ps1 -SetPhase human-acceptance -SetGate human-acceptance` の後、B-7へ
 - REVISE / REPLAN → 指定された工程へ差し戻す(対象の未知・仮定が指定される。人間へは出さない。並行の子で、兄弟の定義に触れる戻りなら `references/parallel.md` 5)
 - BLOCKED → 人間へ質問して停止(境界(a))
