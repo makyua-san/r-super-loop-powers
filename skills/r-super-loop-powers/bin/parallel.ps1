@@ -434,6 +434,17 @@ function Invoke-Halt {
     $keepN = $Keep.Trim().TrimStart('m')
     if (-not $keepN) { $keepN = $self }
     if ($keepN -ne $self -and $keepN -ne $C.Sibling) { Stop-Failed "-Keep must be $self or $($C.Sibling) (got $Keep)" '' }
+    # After a partial merge (one in, the other conflicted) only the merged one can be kept:
+    # dropping it would mark code that is already on the base branch as redo.
+    if ($null -eq $L.Halt) {
+        $dropN = $C.Sibling
+        if ($keepN -ne $self) { $dropN = $self }
+        $dropRow = $L.Rows[$dropN]
+        if ($null -ne $dropRow -and [string]$dropRow.status -eq 'passed' -and $dropRow.sha) {
+            $anc = Invoke-Git ([string]$L.Group.base) @('merge-base', '--is-ancestor', [string]$dropRow.sha, 'HEAD')
+            if ($anc.Code -eq 0) { Stop-Refused "m$dropN is already merged into the base" "run parallel.ps1 -Halt -GoalDir `"$GoalDir`" -Keep $dropN -Reason `"<why>`" instead" }
+        }
+    }
 
     # Exclusive create: write a temp file, then a move that fails when halt.json exists.
     $file = Join-Path $L.Dir 'halt.json'
@@ -633,14 +644,20 @@ function Invoke-Merge {
             Write-MergedLines $L $done
             Stop-Failed ("git merge of m$n failed: " + (($mr.Out -split "`n") -join ' | ')) 'fix the cause in the base, then run -Merge again'
         }
-        $conflicts = @(Get-List $L.Group.conflicts)
+        # One entry per milestone: a re-run replaces the earlier one.
+        $conflicts = @(Get-List $L.Group.conflicts | Where-Object { [string]$_.n -ne $n })
         $conflicts += [pscustomobject]@{ n = $n; files = $files; at = (Get-Date).ToString('o') }
         Save-Group $L $null $conflicts (Get-List $L.Group.redo)
         foreach ($f in $files) { Write-Kv 'CONFLICT_FILE' $f }
         Write-Kv 'UNMERGED' "m$n"
         Write-MergedLines $L $done
         Write-Kv 'STATUS' 'CONFLICT'
-        Write-Kv 'NEXT' "ask the human which milestone to keep: parallel.ps1 -Halt -Keep <n> -Reason `"merge conflict: ...`", then -Merge again (the other is redone serially)"
+        if ($done.Count -gt 0) {
+            # The merged one is on the base branch now, so it is the only one that can be kept.
+            Write-Kv 'NEXT' ("parallel.ps1 -Halt -GoalDir `"$GoalDir`" -Keep $($done[0]) -Reason `"merge conflict: " + ($files -join ', ') + "`", then -Merge again (m$n is redone serially)")
+        } else {
+            Write-Kv 'NEXT' "report the conflict to the human and wait (the base may have moved since the split); nothing was merged"
+        }
         exit 1
     }
 

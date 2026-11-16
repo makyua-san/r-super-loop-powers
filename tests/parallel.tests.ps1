@@ -267,15 +267,29 @@ $r = Invoke-Par $p.C2 @('-Merge')
 Check 'merge-conflict' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'CONFLICT' -and $r.Out -match '(?m)^CONFLICT_FILE: same\.txt' -and $r.Out -match '(?m)^UNMERGED: m2' -and $r.Out -match '(?m)^MERGED: m1 \| ') $r.Out
 $gj = (Get-Text (Join-Path $p.Led 'group.json')) | ConvertFrom-Json
 Check 'merge-conflict-recorded' (-not $gj.merged -and @($gj.redo).Count -eq 0 -and @($gj.conflicts).Count -eq 1 -and [string]@($gj.conflicts)[0].n -eq '2' -and @(@($gj.conflicts)[0].files) -contains 'same.txt') (Get-Text (Join-Path $p.Led 'group.json'))
-Check 'merge-conflict-aborted'(-not (git -C $p.Base rev-parse -q --verify MERGE_HEAD 2>$null) -and (Get-Text (Join-Path $p.Base 'same.txt')) -notmatch '<<<<<<<') (git -C $p.Base status | Out-String)
+Check 'merge-conflict-next-names-keep' ((Get-Kv $r.Out 'NEXT') -match '-Halt .*-Keep 1\b' -and (Get-Kv $r.Out 'NEXT') -match 'same\.txt') $r.Out
+$r = Invoke-Par $p.C2 @('-Merge')
+$gj = (Get-Text (Join-Path $p.Led 'group.json')) | ConvertFrom-Json
+Check 'merge-conflict-rerun-no-duplicate' ((Get-Kv $r.Out 'STATUS') -eq 'CONFLICT' -and @($gj.conflicts).Count -eq 1) (Get-Text (Join-Path $p.Led 'group.json'))
+Check 'merge-conflict-aborted' (-not (git -C $p.Base rev-parse -q --verify MERGE_HEAD 2>$null) -and (Get-Text (Join-Path $p.Base 'same.txt')) -notmatch '<<<<<<<') (git -C $p.Base status | Out-String)
 $r = Invoke-Par $p.G @('-Cleanup')
 Check 'cleanup-refused-before-merge' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED') $r.Out
+$r = Invoke-Par $p.C2 @('-Halt', '-Keep', '2', '-Reason', 'x')
+Check 'halt-refused-keep-unmerged-after-partial-merge' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and (Get-Kv $r.Out 'NEXT') -match '-Keep 1\b' -and -not (Test-Path (Join-Path $p.Led 'halt.json'))) $r.Out
 $r = Invoke-Par $p.C2 @('-Halt', '-Keep', '1', '-Reason', 'merge conflict: same.txt')
 $r = Invoke-Par $p.C2 @('-Merge')
 $pl = Get-Text (Join-Path $p.G 'parallel-log.md')
 Check 'merge-after-halt-keep' ($r.Code -eq 0 -and $r.Out -match '(?m)^REDO: m2' -and $pl -match '(?m)^- 中止: m1 を残して中止\(merge conflict: same\.txt\)$' -and $pl -match '(?m)^- 合流の衝突: m2: same\.txt$' -and $pl -match '(?m)^\| 2-two \| redo \| ') ($r.Out + $pl)
 $r = Invoke-Par $p.G @('-Cleanup')
 Check 'cleanup-keeps-redo' ($r.Code -eq 0 -and -not (Test-Path $p.W1) -and (Test-Path $p.W2) -and $r.Out -match '(?m)^KEPT_BRANCH: rslp/g1/m2' -and $r.Out -match '(?m)^KEPT_WORKTREE: ' -and -not (Test-Path $p.Led)) $r.Out
+
+# 最初のマージが衝突する(分割の後にベースが同じファイルを足した): -Halt は勧めない。
+$p = New-Passed 'first' 'same.txt' 'f2.txt'
+W (Join-Path $p.Base 'same.txt') "base`n"
+git -C $p.Base add -- same.txt 2>$null; git -C $p.Base commit -q -m 'base adds same.txt' 2>$null
+$headF = (git -C $p.Base rev-parse HEAD).Trim()
+$r = Invoke-Par $p.C2 @('-Merge')
+Check 'merge-first-conflict-next-reports' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'CONFLICT' -and $r.Out -match '(?m)^UNMERGED: m1' -and (Get-Kv $r.Out 'NEXT') -notmatch '-Halt' -and $r.Out -notmatch '(?m)^MERGED: ' -and -not (git -C $p.Base rev-parse -q --verify MERGE_HEAD 2>$null) -and (git -C $p.Base log --merges --oneline "$headF..HEAD" | Measure-Object).Count -eq 0) $r.Out
 
 # 中止した側だけの合流。
 $p = New-Prepared 'solo'
