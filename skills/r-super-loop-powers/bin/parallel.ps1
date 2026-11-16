@@ -6,11 +6,14 @@
     -Pass                                (child) pin the PASS commit, mark the row passed, elect the merger
     -Halt -Reason <text> [-Keep <n>]     (child) stop parallel work; only the kept milestone goes on
     -Merge                               (the merger child) merge the pinned SHAs in the base worktree, write parallel-log.md
-    -Cleanup                             (base) remove the merged children's worktrees and branches, then the ledger
+    -Cleanup [-Force]                    (base) remove the merged children's worktrees and branches, then the ledger
+                                         (a child with uncommitted changes is kept with a WARN unless -Force)
+    -Cleanup -Abandon                    (base, not merged) give the group up: keep worktrees and branches, log it, drop the ledger
   Ledger: <git common dir>\rslp-parallel\<goal-slug>\ (group.json, m<n>.json, merger, halt.json).
   Branches rslp/<slug>/m<n>; worktrees <WorktreeRoot>\<slug>-m<n>.
-  stdout is "KEY: value" (UTF-8; the wording is ASCII, paths are printed as they are); STATUS is OK / REFUSED / FAILED / CONFLICT / HALTED, and
-  anything but OK exits 1. REFUSED and FAILED leave nothing behind.
+  stdout is "KEY: value" (UTF-8; the wording is ASCII, paths and git output are printed as they are); STATUS is OK / REFUSED / FAILED / CONFLICT / HALTED, and
+  anything but OK exits 1. REFUSED creates and writes nothing. FAILED in -Prepare is rolled back. FAILED and CONFLICT
+  in -Merge can leave the goal-records commit and the merges made before it in the base (running -Merge again is safe).
   Saved as UTF-8 with BOM: the state.md keys and the wait text are Japanese.
 #>
 [CmdletBinding()]
@@ -22,7 +25,9 @@ param(
     [string]$Reason = '',          # -Halt
     [string]$Keep = '',            # -Halt: milestone number to keep (default: the calling child)
     [int]$ElectTries = 5,          # -Pass: election attempts
-    [int]$ElectWaitMs = 1000       # -Pass: wait between attempts
+    [int]$ElectWaitMs = 1000,      # -Pass: wait between attempts
+    [switch]$Force,                # -Cleanup: remove a merged child even with uncommitted changes
+    [switch]$Abandon               # -Cleanup: give up a group that was not merged
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,18 +48,24 @@ function Stop-Refused([string]$Reason, [string]$Next) {
     exit 1
 }
 
-# git -C <dir> ... with stderr folded in. Native stderr under 'Stop' would throw
-# (e.g. "Preparing worktree"), so the call runs under 'Continue' and is judged by exit code.
+# git -C <dir> ... . Out has stderr folded in (for messages); Std is stdout only (for parsing:
+# a warning such as "LF will be replaced by CRLF" must not read as a path). Native stderr under
+# 'Stop' would throw (e.g. "Preparing worktree"), so the call runs under 'Continue' and is judged by exit code.
 function Invoke-Git([string]$Dir, [string[]]$GitArgs) {
     $old = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $lines = & git -C $Dir @GitArgs 2>&1 | ForEach-Object { "$_" }
+        $items = @(& git -C $Dir @GitArgs 2>&1)
         $code = $LASTEXITCODE
     } finally { $ErrorActionPreference = $old }
+    $all = @($items | ForEach-Object { "$_" })
+    $std = @($items | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
     # Not Trim(): porcelain lines start with a space (" M app.txt").
-    return @{ Out = (@($lines) -join "`n").TrimEnd().TrimStart("`r", "`n"); Code = $code }
+    return @{ Out = ($all -join "`n").TrimEnd().TrimStart("`r", "`n"); Std = ($std -join "`n").TrimEnd().TrimStart("`r", "`n"); Code = $code }
 }
+
+# Multi-line text (git output) as one KV value.
+function Join-Lines([string]$Text) { return (@($Text -split "`r?`n" | Where-Object { $_.Trim() }) -join ' | ') }
 
 # loop-log.ps1 as a child process (same launch as loop-log.ps1 uses for resume-packet.ps1).
 function Invoke-LoopLog([string[]]$LogArgs) {
@@ -98,14 +109,14 @@ function Read-JsonFile([string]$Path) {
 function Get-Ledger([string]$GoalDir) {
     $topR = Invoke-Git $GoalDir @('rev-parse', '--show-toplevel')
     if ($topR.Code -ne 0) { Stop-Failed "not inside a git work tree: $GoalDir" '' }
-    $top = ConvertTo-WinPath $topR.Out
+    $top = ConvertTo-WinPath $topR.Std
     $cdR = Invoke-Git $GoalDir @('rev-parse', '--path-format=absolute', '--git-common-dir')
-    if ($cdR.Code -ne 0) { Stop-Failed ('git common dir not found: ' + $cdR.Out) '' }
+    if ($cdR.Code -ne 0) { Stop-Failed ('git common dir not found: ' + (Join-Lines $cdR.Out)) '' }
     $topKey = Get-PathKey $top
     $goalKey = Get-PathKey $GoalDir
     if ($goalKey -ne $topKey -and -not $goalKey.StartsWith($topKey + '\')) { Stop-Failed "GoalDir is not inside the work tree $top" '' }
     $goalRel = $GoalDir.Replace('/', '\').TrimEnd('\').Substring($topKey.Length).TrimStart('\').Replace('\', '/')
-    $dir = Join-Path (ConvertTo-WinPath $cdR.Out) ('rslp-parallel\' + (Split-Path -Leaf $GoalDir))
+    $dir = Join-Path (ConvertTo-WinPath $cdR.Std) ('rslp-parallel\' + (Split-Path -Leaf $GoalDir))
 
     $group = Read-JsonFile (Join-Path $dir 'group.json')
     $rows = @{}
@@ -192,20 +203,20 @@ function Invoke-Prepare {
     $L = Get-Ledger $GoalDir
     $top = $L.Top
     $br = Invoke-Git $top @('symbolic-ref', '--short', '-q', 'HEAD')
-    if ($br.Code -ne 0 -or -not $br.Out) { Stop-Refused 'the base is on a detached HEAD' 'check out a branch, then run again' }
-    $baseBranch = $br.Out
+    if ($br.Code -ne 0 -or -not $br.Std) { Stop-Refused 'the base is on a detached HEAD' 'check out a branch, then run again' }
+    $baseBranch = $br.Std
     $dirty = Invoke-Git $top @('status', '--porcelain', '--untracked-files=no')
-    if ($dirty.Code -ne 0) { Stop-Failed ('git status failed: ' + $dirty.Out) '' }
-    if ($dirty.Out) {
-        $paths = @($dirty.Out -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Substring([Math]::Min(3, $_.Length)) } | Select-Object -First 10)
+    if ($dirty.Code -ne 0) { Stop-Failed ('git status failed: ' + (Join-Lines $dirty.Out)) '' }
+    if ($dirty.Std) {
+        $paths = @($dirty.Std -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Substring([Math]::Min(3, $_.Length)) } | Select-Object -First 10)
         Stop-Refused ('uncommitted changes: ' + ($paths -join ', ')) 'commit (or stash) them, then run again'
     }
     $spec = $L.GoalRel
     if (-not $spec) { $spec = '.' }
     $un = Invoke-Git $top @('ls-files', '--others', '--exclude-standard', '--', $spec)
-    if ($un.Code -ne 0) { Stop-Failed ('git ls-files failed: ' + $un.Out) '' }
+    if ($un.Code -ne 0) { Stop-Failed ('git ls-files failed: ' + (Join-Lines $un.Out)) '' }
     $skip = @('resume-pending', 'resume-packet.md', 'resume-pending.failed')
-    $untracked = @($un.Out -split "`n" | Where-Object { $_.Trim() } | Where-Object { $skip -notcontains (($_.Trim('"')) -split '/')[-1] })
+    $untracked = @($un.Std -split "`n" | Where-Object { $_.Trim() } | Where-Object { $skip -notcontains (($_.Trim('"')) -split '/')[-1] })
     if ($untracked.Count -gt 0) {
         Stop-Refused ('untracked files in the goal folder: ' + ((@($untracked | Select-Object -First 10)) -join ', ')) 'commit them, then run again'
     }
@@ -228,7 +239,7 @@ function Invoke-Prepare {
         if (Test-Path -LiteralPath $it.worktree) { Stop-Refused "worktree path already exists: $($it.worktree)" 'remove it (or pass -WorktreeRoot), then run again' }
     }
     $shaR = Invoke-Git $top @('rev-parse', 'HEAD')
-    if ($shaR.Code -ne 0) { Stop-Failed ('git rev-parse HEAD failed: ' + $shaR.Out) '' }
+    if ($shaR.Code -ne 0) { Stop-Failed ('git rev-parse HEAD failed: ' + (Join-Lines $shaR.Out)) '' }
 
     # --- 1. base state.md (the design.md gate lives in loop-log) ---
     $stateBytes = [IO.File]::ReadAllBytes($stateFile)
@@ -247,7 +258,8 @@ function Invoke-Prepare {
     try {
         # --- 2. union merge for the append-only logs ---
         $want = @('docs/r-super-loop-powers/*/assumptions.md merge=union', 'docs/r-super-loop-powers/*/call-log.md merge=union',
-            'docs/r-super-loop-powers/*/hook-log.md merge=union', 'docs/r-super-loop-powers/*/scout/index.md merge=union')
+            'docs/r-super-loop-powers/*/hook-log.md merge=union', 'docs/r-super-loop-powers/*/scout/index.md merge=union',
+            'docs/r-super-loop-powers/*/hearing-log.md merge=union')
         $attrText = Read-TextFile $attrFile
         $have = @($attrText -split "`r?`n" | ForEach-Object { $_.Trim() })
         $add = @($want | Where-Object { $have -notcontains $_ })
@@ -263,7 +275,7 @@ function Invoke-Prepare {
         # --- 3. worktrees ---
         foreach ($it in $items) {
             $r = Invoke-Git $top @('worktree', 'add', '-q', '-b', $it.branch, $it.worktree, 'HEAD')
-            if ($r.Code -ne 0) { throw "git worktree add failed for m$($it.n): $($r.Out)" }
+            if ($r.Code -ne 0) { throw "git worktree add failed for m$($it.n): $(Join-Lines $r.Out)" }
         }
 
         # --- 4. child state.md: parallel-base line, then the milestone fields and the resume marker ---
@@ -288,7 +300,7 @@ function Invoke-Prepare {
         $msList = @()
         foreach ($it in $items) { $msList += [ordered]@{ n = [string]$it.n; name = $it.name; branch = $it.branch; worktree = $it.worktree } }
         $group = [ordered]@{
-            slug = $slug; base = $top; baseBranch = $baseBranch; baseSha = $shaR.Out; created = $now
+            slug = $slug; base = $top; baseBranch = $baseBranch; baseSha = $shaR.Std; created = $now
             milestones = $msList; merged = $null; conflicts = @(); redo = @()
         }
         Write-ExitFile (Join-Path $L.Dir 'group.json') ($group | ConvertTo-Json -Depth 5)
@@ -345,6 +357,8 @@ function Select-Merger($Ledger, [string]$Self, [string]$Sibling, [bool]$HaltKeep
             $mine = $true
         } catch [IO.IOException] {
             if ((Read-TextFile $file).Trim() -eq $Self) { return 'merger' }   # our own mark from an earlier run
+        } catch [UnauthorizedAccessException] {
+            # busy (for example the sibling's delete is still pending): wait and try again
         }
         if ($mine) {
             if ($HaltKeepsSelf -or (Get-RowStatus $Ledger.Dir $Sibling) -eq 'passed') { return 'merger' }
@@ -379,9 +393,23 @@ function Invoke-Pass {
         }
         $haltKeepsSelf = $true
     }
-    $gateFile = Join-Path $GoalDir ('milestones\' + [string]$C.Me.name + '\gate-decision.md')
-    if (-not (Test-Path -LiteralPath $gateFile -PathType Leaf)) { Stop-Refused "no gate decision: $gateFile" 'run the B-6 gate first; -Pass only pins a PASS' }
-    if (-not [regex]::IsMatch((Read-TextFile $gateFile), '\bPASS\b')) { Stop-Refused "gate-decision.md is not a PASS: $gateFile" 'fix the milestone and run the B-6 gate again' }
+    # The gate file: milestones\<name>; for a decorated name ("3-orders (CP1)") the single milestones\<n>-* folder.
+    $msDir = Join-Path $GoalDir 'milestones'
+    $gateFile = Join-Path $msDir ([string]$C.Me.name + '\gate-decision.md')
+    if (-not (Test-Path -LiteralPath $gateFile -PathType Leaf)) {
+        $cands = @()
+        if (Test-Path -LiteralPath $msDir -PathType Container) { $cands = @(Get-ChildItem -LiteralPath $msDir -Directory | Where-Object { $_.Name -match ('^' + $self + '-') }) }
+        if ($cands.Count -ne 1) { Stop-Refused "no gate decision: $gateFile (and $($cands.Count) folders match milestones\$self-*)" 'run the B-6 gate first; -Pass only pins a PASS' }
+        $gateFile = Join-Path $cands[0].FullName 'gate-decision.md'
+        if (-not (Test-Path -LiteralPath $gateFile -PathType Leaf)) { Stop-Refused "no gate decision: $gateFile" 'run the B-6 gate first; -Pass only pins a PASS' }
+    }
+    # The verdict is the first of PASS / REVISE / REPLAN / BLOCKED ("判定はPASSです" counts; a REVISE that mentions PASS does not).
+    $verdict = [regex]::Match((Read-TextFile $gateFile), '(?<![A-Za-z])(PASS|REVISE|REPLAN|BLOCKED)(?![A-Za-z])')
+    if (-not $verdict.Success -or $verdict.Value -ne 'PASS') {
+        $seen = 'none'
+        if ($verdict.Success) { $seen = $verdict.Value }
+        Stop-Refused "gate-decision.md is not a PASS (first verdict: $seen): $gateFile" 'fix the milestone and run the B-6 gate again'
+    }
 
     # --- 1. the pinned PASS commit (state.md and resume-* stay out) ---
     $top = $L.Top
@@ -389,21 +417,44 @@ function Invoke-Pass {
     if ($L.GoalRel) { $prefix = $L.GoalRel + '/' }
     $spec = @('--', '.', ":(exclude)${prefix}state.md", ":(exclude)${prefix}resume-*")
     $add = Invoke-Git $top (@('add', '-A') + $spec)
-    if ($add.Code -ne 0) { Stop-Failed ('git add failed: ' + $add.Out) '' }
+    if ($add.Code -ne 0) { Stop-Failed ('git add failed: ' + (Join-Lines $add.Out)) '' }
+    # staged by hand earlier: these stay out as well ("did not match" is fine)
+    $null = Invoke-Git $top @('reset', '-q', '--', "${prefix}state.md")
+    $null = Invoke-Git $top @('reset', '-q', '--', "${prefix}resume-*")
+    # A new file that is untracked (and not ignored) in the base would block the merge there
+    # and would put a file the user kept out of history into a commit.
+    $newR = Invoke-Git $top @('-c', 'core.quotepath=false', 'diff', '--cached', '--name-only', '--diff-filter=A')
+    if ($newR.Code -ne 0) { Stop-Failed ('git diff --cached failed: ' + (Join-Lines $newR.Out)) '' }
+    $baseTop = [string]$L.Group.base
+    $inBase = @($newR.Std -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ } |
+        Where-Object { Test-Path -LiteralPath (Join-Path $baseTop $_.Replace('/', '\')) -PathType Leaf })
+    if ($inBase.Count -gt 0) {
+        $chk = Invoke-Git $baseTop (@('-c', 'core.quotepath=false', 'ls-files', '--others', '--exclude-standard', '--') + @($inBase | ForEach-Object { ":(literal)$_" }))
+        if ($chk.Code -ne 0) {
+            $null = Invoke-Git $top (@('reset', '-q') + $spec)
+            Stop-Failed ('git ls-files failed in the base: ' + (Join-Lines $chk.Out)) ''
+        }
+        $blocked = @($chk.Std -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        if ($blocked.Count -gt 0) {
+            $null = Invoke-Git $top (@('reset', '-q') + $spec)                # leave the index as it was
+            $exclude = Join-Path (Split-Path -Parent (Split-Path -Parent $L.Dir)) 'info\exclude'
+            Stop-Refused ('files untracked in the base would be committed: ' + ((@($blocked | Select-Object -First 10)) -join ', ')) "add them to .gitignore or to $exclude, then run -Pass again"
+        }
+    }
     $staged = Invoke-Git $top @('diff', '--cached', '--quiet')
     if ($staged.Code -ne 0) {
         $slug = [string]$L.Group.slug
         $ci = Invoke-Git $top @('commit', '-q', '-m', "rslp: m$self PASS ($slug, parallel)")
         if ($ci.Code -ne 0) {
             $null = Invoke-Git $top (@('reset', '-q') + $spec)                # leave the index as it was
-            $tail = $ci.Out
+            $tail = Join-Lines $ci.Out
             if ($tail.Length -gt 300) { $tail = $tail.Substring($tail.Length - 300) }
             Stop-Failed ('git commit failed: ' + $tail) 'fix the cause (for example the pre-commit hook), then run -Pass again'
         }
     }
     $headR = Invoke-Git $top @('rev-parse', 'HEAD')
-    if ($headR.Code -ne 0) { Stop-Failed ('git rev-parse HEAD failed: ' + $headR.Out) '' }
-    $sha = $headR.Out
+    if ($headR.Code -ne 0) { Stop-Failed ('git rev-parse HEAD failed: ' + (Join-Lines $headR.Out)) '' }
+    $sha = $headR.Std
 
     # --- 2. our row: passed (the first passed time stays) ---
     $old = $L.Rows[$self]
@@ -511,12 +562,14 @@ function Write-MergedLines($L, $Numbers) {
     }
 }
 
-# One section of parallel-log.md (the Japanese wording is fixed by the plan).
-function Add-ParallelLog([string]$File, $L, $MergedAt, $Conflicts, $RedoNs, [int]$Wall, [int]$Serial) {
+# One section of parallel-log.md (the Japanese wording is fixed by the plan). $HaltText
+# replaces the "中止" value (-Cleanup -Abandon).
+function Add-ParallelLog([string]$File, $L, $MergedAt, $Conflicts, $RedoNs, [int]$Wall, [int]$Serial, [string]$HaltText = '') {
     $nl = "`n"
     $ms = @(@($L.Group.milestones) | Sort-Object { [int][string]$_.n })
     $halt = 'なし'
     if ($null -ne $L.Halt) { $halt = 'm{0} を残して中止({1})' -f [string]$L.Halt.keep, [string]$L.Halt.reason }
+    if ($HaltText) { $halt = $HaltText }
     $conf = 'なし'
     if (@($Conflicts).Count -gt 0) { $conf = (@($Conflicts | ForEach-Object { 'm{0}: {1}' -f [string]$_.n, ((Get-List $_.files) -join ', ') })) -join ' / ' }
     $lines = @()
@@ -566,7 +619,7 @@ function Invoke-Merge {
         $recRedo = Get-SortedNumbers (Get-List $L.Group.redo)
         Write-MergedLines $L @($allNs | Where-Object { $recRedo -notcontains $_ })
         foreach ($n in $recRedo) { Write-Kv 'REDO' "m$n" }
-        Write-Kv 'BASE_HEAD' (Invoke-Git $base @('rev-parse', 'HEAD')).Out
+        Write-Kv 'BASE_HEAD' (Invoke-Git $base @('rev-parse', 'HEAD')).Std
         Write-Kv 'ALREADY' ('yes | merged ' + [string]$L.Group.merged)
         Write-Kv 'STATUS' 'OK'
         Write-Kv 'NEXT' $next
@@ -589,8 +642,8 @@ function Invoke-Merge {
     if (-not (Test-Path -LiteralPath $base -PathType Container)) { Stop-Failed "base worktree not found: $base" '' }
     $baseBranch = [string]$L.Group.baseBranch
     $br = Invoke-Git $base @('symbolic-ref', '--short', '-q', 'HEAD')
-    if ($br.Code -ne 0 -or $br.Out -ne $baseBranch) {
-        $now = $br.Out
+    if ($br.Code -ne 0 -or $br.Std -ne $baseBranch) {
+        $now = $br.Std
         if ($br.Code -ne 0 -or -not $now) { $now = 'a detached HEAD' }
         Stop-Refused "the base is on $now, not $baseBranch" "git -C `"$base`" checkout $baseBranch, then run -Merge again"
     }
@@ -598,9 +651,9 @@ function Invoke-Merge {
         Stop-Refused 'the base has a merge in progress (MERGE_HEAD)' "resolve and commit, or git merge --abort, in $base"
     }
     $dirty = Invoke-Git $base @('-c', 'core.quotepath=false', 'status', '--porcelain', '--untracked-files=no')
-    if ($dirty.Code -ne 0) { Stop-Failed ('git status failed in the base: ' + $dirty.Out) '' }
+    if ($dirty.Code -ne 0) { Stop-Failed ('git status failed in the base: ' + (Join-Lines $dirty.Out)) '' }
     $outside = @()
-    foreach ($line in @($dirty.Out -split "`n" | Where-Object { $_.Trim() })) {
+    foreach ($line in @($dirty.Std -split "`n" | Where-Object { $_.Trim() })) {
         $path = $line.Substring([Math]::Min(3, $line.Length))
         $arrow = $path.IndexOf(' -> ')
         if ($arrow -ge 0) { $path = $path.Substring($arrow + 4) }
@@ -616,15 +669,15 @@ function Invoke-Merge {
     $goalSpec = @('--', '.')
     if ($L.GoalRel) { $goalSpec = @('--', $L.GoalRel, ":(exclude)$($L.GoalRel)/resume-*") }
     $pending = Invoke-Git $base (@('status', '--porcelain') + $goalSpec)
-    if ($pending.Code -ne 0) { Stop-Failed ('git status failed in the base: ' + $pending.Out) '' }
-    if ($pending.Out) {
+    if ($pending.Code -ne 0) { Stop-Failed ('git status failed in the base: ' + (Join-Lines $pending.Out)) '' }
+    if ($pending.Std) {
         $add = Invoke-Git $base (@('add', '-A') + $goalSpec)
-        if ($add.Code -ne 0) { Stop-Failed ('git add failed in the base: ' + $add.Out) '' }
+        if ($add.Code -ne 0) { Stop-Failed ('git add failed in the base: ' + (Join-Lines $add.Out)) '' }
         if ((Invoke-Git $base @('diff', '--cached', '--quiet')).Code -ne 0) {
             $ci = Invoke-Git $base @('commit', '-q', '-m', "rslp: goal records before merge ($slug)")
             if ($ci.Code -ne 0) {
                 $null = Invoke-Git $base (@('reset', '-q') + $goalSpec)
-                Stop-Failed ('git commit failed in the base: ' + (($ci.Out -split "`n") -join ' | ')) 'fix the cause (for example the pre-commit hook), then run -Merge again'
+                Stop-Failed ('git commit failed in the base: ' + (Join-Lines $ci.Out)) 'fix the cause (for example the pre-commit hook), then run -Merge again'
             }
         }
     }
@@ -638,18 +691,18 @@ function Invoke-Merge {
         if ($mr.Code -eq 0) { $done += $n; continue }
 
         $u = Invoke-Git $base @('-c', 'core.quotepath=false', 'diff', '--name-only', '--diff-filter=U')
-        $files = @($u.Out -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $files = @($u.Std -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
         if ((Invoke-Git $base @('rev-parse', '-q', '--verify', 'MERGE_HEAD')).Code -eq 0) { $null = Invoke-Git $base @('merge', '--abort') }
         if ($files.Count -eq 0) {
             Write-MergedLines $L $done
-            Stop-Failed ("git merge of m$n failed: " + (($mr.Out -split "`n") -join ' | ')) 'fix the cause in the base, then run -Merge again'
+            Stop-Failed ("git merge of m$n failed: " + (Join-Lines $mr.Out)) 'fix the cause in the base, then run -Merge again'
         }
         # One entry per milestone: a re-run replaces the earlier one.
         $conflicts = @(Get-List $L.Group.conflicts | Where-Object { [string]$_.n -ne $n })
         $conflicts += [pscustomobject]@{ n = $n; files = $files; at = (Get-Date).ToString('o') }
         Save-Group $L $null $conflicts (Get-List $L.Group.redo)
         foreach ($f in $files) { Write-Kv 'CONFLICT_FILE' $f }
-        Write-Kv 'UNMERGED' "m$n"
+        Write-Kv 'UNMERGED' "m$n | $sha"
         Write-MergedLines $L $done
         Write-Kv 'STATUS' 'CONFLICT'
         if ($done.Count -gt 0) {
@@ -672,7 +725,7 @@ function Invoke-Merge {
 
     Write-MergedLines $L $done
     foreach ($n in $redoNs) { Write-Kv 'REDO' "m$n" }
-    Write-Kv 'BASE_HEAD' (Invoke-Git $base @('rev-parse', 'HEAD')).Out
+    Write-Kv 'BASE_HEAD' (Invoke-Git $base @('rev-parse', 'HEAD')).Std
     Write-Kv 'WALL_MINUTES' $wall
     Write-Kv 'SERIAL_MINUTES' $serial
     Write-Kv 'STATUS' 'OK'
@@ -680,10 +733,51 @@ function Invoke-Merge {
     exit 0
 }
 
+# Uncommitted paths in a child work tree, minus what is always dirty there (state.md,
+# resume-*, and the hook / call logs the hooks append to).
+function Get-UncommittedPaths([string]$Dir, [string]$GoalRel) {
+    $st = Invoke-Git $Dir @('-c', 'core.quotepath=false', 'status', '--porcelain', '--untracked-files=all')
+    if ($st.Code -ne 0) { return @('(git status failed: ' + (Join-Lines $st.Out) + ')') }
+    $prefix = ''
+    if ($GoalRel) { $prefix = $GoalRel + '/' }
+    $left = @()
+    foreach ($line in @($st.Std -split "`n" | Where-Object { $_.Trim() })) {
+        $path = $line.Substring([Math]::Min(3, $line.Length))
+        $arrow = $path.IndexOf(' -> ')
+        if ($arrow -ge 0) { $path = $path.Substring($arrow + 4) }
+        $path = $path.Trim('"')
+        if ($path.StartsWith($prefix)) {
+            $rest = $path.Substring($prefix.Length)
+            if (@('state.md', 'hook-log.md', 'call-log.md') -contains $rest -or ($rest.StartsWith('resume-') -and -not $rest.Contains('/'))) { continue }
+        }
+        $left += $path
+    }
+    return $left
+}
+
+function Invoke-Abandon($L) {
+    if ($L.Group.merged) { Stop-Refused "the group is already merged ($([string]$L.Group.merged)); -Abandon is for a group that will not be merged" "run parallel.ps1 -Cleanup -GoalDir `"$GoalDir`"" }
+    foreach ($m in @($L.Group.milestones)) {
+        Write-Kv 'KEPT_WORKTREE' ([string]$m.worktree)
+        Write-Kv 'KEPT_BRANCH' ([string]$m.branch)
+    }
+    $now = (Get-Date).ToString('o')
+    $allNs = Get-SortedNumbers @(@($L.Group.milestones) | ForEach-Object { $_.n })
+    $wall = Get-WholeMinutes $L.Group.created $now
+    $conflicts = @(Get-List $L.Group.conflicts)
+    Add-ParallelLog (Join-Path $GoalDir 'parallel-log.md') $L $now $conflicts $allNs $wall 0 '合流せずに打ち切り'
+    Remove-Item -LiteralPath $L.Dir -Recurse -Force
+    Write-Kv 'LEDGER' 'removed'
+    Write-Kv 'STATUS' 'OK'
+    Write-Kv 'NEXT' "set the base state.md back with loop-log.ps1 -GoalDir `"$GoalDir`" (-SetPhase milestone-implementation -SetMilestone <first> -SetGate impl-gate -Clear <wait>), then redo the milestones one after another (references/parallel.md 5)"
+    exit 0
+}
+
 function Invoke-Cleanup {
     $L = Get-Ledger $GoalDir
     if ($L.Role -ne 'base') { Stop-Refused "-Cleanup runs in the base worktree of a parallel group (this work tree is: $($L.Role))" "run parallel.ps1 -GoalDir `"$GoalDir`" -Status" }
-    if (-not $L.Group.merged) { Stop-Refused 'the group is not merged yet' 'the merger runs parallel.ps1 -Merge first' }
+    if ($Abandon) { Invoke-Abandon $L }
+    if (-not $L.Group.merged) { Stop-Refused 'the group is not merged yet' "the merger runs parallel.ps1 -Merge first; to give the group up without merging, run parallel.ps1 -Cleanup -Abandon -GoalDir `"$GoalDir`" here" }
     $base = $L.Top
     $redo = @(Get-List $L.Group.redo | ForEach-Object { [string]$_ })
     $warn = 0
@@ -698,6 +792,13 @@ function Invoke-Cleanup {
             continue
         }
         if (Test-Path -LiteralPath $path) {
+            # --force is needed for state.md / resume-*; anything else uncommitted is kept unless -Force.
+            $left = @(Get-UncommittedPaths $path $L.GoalRel)
+            if ($left.Count -gt 0 -and -not $Force) {
+                Write-Kv 'WARN' ("$path has uncommitted changes: " + ((@($left | Select-Object -First 5)) -join ', '))
+                $warn++
+                continue
+            }
             $rm = Invoke-Git $base @('worktree', 'remove', '--force', $path)
             if ($rm.Code -ne 0) {
                 Write-Kv 'WARN' ("could not remove ${path}: " + (($rm.Out -split "`n") -join ' | '))
@@ -730,7 +831,7 @@ function Invoke-Cleanup {
         }
     }
     Write-Kv 'STATUS' 'OK'
-    if ($warn -gt 0) { Write-Kv 'NEXT' 'fix the WARN causes (for example a program still using that folder), then run -Cleanup again' }
+    if ($warn -gt 0) { Write-Kv 'NEXT' 'fix the WARN causes (for example a program still using that folder), then run -Cleanup again; uncommitted changes in a child: ask the human, then -Cleanup -Force removes them' }
     exit 0
 }
 

@@ -26,11 +26,12 @@ function Invoke-Par([string]$Goal, [string[]]$Extra) {
     return @{ Out = $out; Code = $LASTEXITCODE }
 }
 # 一時ディレクトリに「ゴール g1 をコミット済みのリポジトリ」を作り、ベースのパスを返す。
-function New-Repo([string]$Dir, [string]$StateText) {
+# -AutoCrlf: core.autocrlf true (the Windows default) instead of false.
+function New-Repo([string]$Dir, [string]$StateText, [switch]$AutoCrlf) {
     New-Item -ItemType Directory -Path $Dir -Force | Out-Null
     git -C $Dir init -q -b main 2>$null
     git -C $Dir config user.email t@example.com; git -C $Dir config user.name t
-    git -C $Dir config core.autocrlf false
+    if ($AutoCrlf) { git -C $Dir config core.autocrlf true } else { git -C $Dir config core.autocrlf false }
     $g = Join-Path $Dir 'docs\r-super-loop-powers\g1'
     W (Join-Path $g 'state.md') $StateText
     W (Join-Path $g 'call-log.md') "# call-log — g1`n`n"
@@ -81,16 +82,16 @@ $w1 = Join-Path $t 'my app.rslp\g1-m1'; $w2 = Join-Path $t 'my app.rslp\g1-m2'
 $c1 = Join-Path $w1 'docs\r-super-loop-powers\g1'
 Check 'prepare-path-with-space' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and (Test-Path -LiteralPath $c1) -and (Test-Path -LiteralPath (Join-Path $w2 'app.txt'))) $r.Out
 $s1 = Get-Text (Join-Path $c1 'state.md')
-Check 'prepare-child-state' ($s1 -match '(?m)^- phase: milestone-implementation$' -and $s1 -match '(?m)^- milestone: 1-one$' -and $s1 -match '(?m)^- 次のゲート: impl-gate$' -and $s1.Contains("- parallel-base: $base`n- updated:")) $s1
+Check 'prepare-child-state' ($s1 -match '(?m)^- phase: milestone-implementation\r?$' -and $s1 -match '(?m)^- milestone: 1-one\r?$' -and $s1 -match '(?m)^- 次のゲート: impl-gate\r?$' -and $s1 -match ('- parallel-base: ' + [regex]::Escape($base) + '\r?\n- updated:')) $s1
 $sb = Get-Text (Join-Path $g 'state.md')
-Check 'prepare-base-state' ($sb -match '(?m)^- phase: parallel$' -and $sb -match '(?m)^- milestone: 1-one \+ 2-two$' -and $sb -match '(?m)^- 待ち: 並行中: 1-one / 2-two') $sb
+Check 'prepare-base-state' ($sb -match '(?m)^- phase: parallel\r?$' -and $sb -match '(?m)^- milestone: 1-one \+ 2-two\r?$' -and $sb -match '(?m)^- 待ち: 並行中: 1-one / 2-two') $sb
 $mk = Get-Text (Join-Path $c1 'resume-pending')
-Check 'prepare-child-marker-cwd' ($mk -match ('(?m)^cwd: ' + [regex]::Escape($w1) + '$')) $mk
+Check 'prepare-child-marker-cwd' ($mk -match ('(?m)^cwd: ' + [regex]::Escape($w1) + '\r?$')) $mk
 $common = (git -C $base rev-parse --path-format=absolute --git-common-dir).Trim()
 $led = Join-Path $common 'rslp-parallel\g1'
 Check 'prepare-ledger' ((Test-Path (Join-Path $led 'group.json')) -and ((Get-Text (Join-Path $led 'm1.json')) | ConvertFrom-Json).status -eq 'running' -and -not (Test-Path (Join-Path $led 'merger'))) (Get-ChildItem $led -ErrorAction SilentlyContinue | Out-String)
 $attr = Get-Text (Join-Path $common 'info\attributes')
-Check 'prepare-attributes' ($attr.Contains('docs/r-super-loop-powers/*/call-log.md merge=union') -and $attr.Contains('docs/r-super-loop-powers/*/hook-log.md merge=union') -and $attr.Contains('docs/r-super-loop-powers/*/assumptions.md merge=union') -and $attr.Contains('docs/r-super-loop-powers/*/scout/index.md merge=union')) $attr
+Check 'prepare-attributes' ($attr.Contains('docs/r-super-loop-powers/*/call-log.md merge=union') -and $attr.Contains('docs/r-super-loop-powers/*/hook-log.md merge=union') -and $attr.Contains('docs/r-super-loop-powers/*/assumptions.md merge=union') -and $attr.Contains('docs/r-super-loop-powers/*/scout/index.md merge=union') -and $attr.Contains('docs/r-super-loop-powers/*/hearing-log.md merge=union')) $attr
 Check 'prepare-branches' ((git -C $base branch --list 'rslp/g1/*' | Measure-Object).Count -eq 2) (git -C $base branch | Out-String)
 $r = Invoke-Par $c1 @('-Status')
 Check 'status-child' ((Get-Kv $r.Out 'ROLE') -eq 'child' -and (Get-Kv $r.Out 'SELF') -eq 'm1' -and $r.Out -match '(?m)^CHILD: m2 \| running \| - \| ' -and (Get-Kv $r.Out 'HALTED') -eq 'no') $r.Out
@@ -143,7 +144,7 @@ $d = New-Repo (Join-Path $t '作業 app') $stateLf
 $r = Invoke-Par (Join-Path $d 'docs\r-super-loop-powers\g1') @('-Prepare', '-Milestones', '1-a,2-b')
 $wj = Join-Path $t '作業 app.rslp\g1-m1'
 $mkj = Get-Text (Join-Path $wj 'docs\r-super-loop-powers\g1\resume-pending')
-Check 'prepare-nonascii-path' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and $r.Out -match ('(?m)^WORKTREE: m1 \| ' + [regex]::Escape($wj) + '\r?$') -and $mkj -match ('(?m)^cwd: ' + [regex]::Escape($wj) + '$')) ($r.Out + $mkj)
+Check 'prepare-nonascii-path' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and $r.Out -match ('(?m)^WORKTREE: m1 \| ' + [regex]::Escape($wj) + '\r?$') -and $mkj -match ('(?m)^cwd: ' + [regex]::Escape($wj) + '\r?$')) ($r.Out + $mkj)
 
 # Late failure: the base has an uncommitted design.md row, so the base passes the gate and
 # the children (committed copy, no design.md) are refused -> everything is rolled back.
@@ -156,8 +157,10 @@ Check 'prepare-rollback-on-child-refusal' ($r.Code -ne 0 -and (Get-Kv $r.Out 'ST
 
 # --- -Pass / -Halt ---
 # 準備済みのリポジトリを新しく作る。@{ Base; G; W1; W2; C1; C2; Led } を返す。
-function New-Prepared([string]$Name) {
-    $pb = New-Repo (Join-Path $t $Name) $stateLf
+# -AutoCrlf: see New-Repo. -BeforePrepare: run on the base path before -Prepare.
+function New-Prepared([string]$Name, [switch]$AutoCrlf, [scriptblock]$BeforePrepare) {
+    $pb = New-Repo (Join-Path $t $Name) $stateLf -AutoCrlf:$AutoCrlf
+    if ($BeforePrepare) { & $BeforePrepare $pb }
     $pg = Join-Path $pb 'docs\r-super-loop-powers\g1'
     $null = Invoke-Par $pg @('-Prepare', '-Milestones', '1-one,2-two')
     $pw1 = Join-Path $t "$Name.rslp\g1-m1"; $pw2 = Join-Path $t "$Name.rslp\g1-m2"
@@ -202,10 +205,61 @@ Check 'pass-refused-from-base' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 
 # A failing pre-commit hook: FAILED with git's words, the row stays running.
 $p = New-Prepared 'hook'
 $common = (git -C $p.Base rev-parse --path-format=absolute --git-common-dir).Trim()
-W (Join-Path $common 'hooks\pre-commit') "#!/bin/sh`necho blocked-by-hook >&2`nexit 1`n"
+W (Join-Path $common 'hooks\pre-commit') "#!/bin/sh`necho blocked-by-hook >&2`necho second-line >&2`nexit 1`n"
 Add-Work $p 1 'f1.txt' "one`n"
 $r = Invoke-Par $p.C1 (@('-Pass') + $fast)
 Check 'pass-commit-hook-fails' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'FAILED' -and $r.Out -match 'blocked-by-hook' -and ((Get-Text (Join-Path $p.Led 'm1.json')) | ConvertFrom-Json).status -eq 'running') $r.Out
+Check 'pass-reason-one-line' ((Get-Kv $r.Out 'REASON') -match 'blocked-by-hook \| second-line') $r.Out
+
+# state.md / resume-* staged by hand stay out of the PASS commit.
+$p = New-Prepared 'stage'
+Add-Work $p 1 'f1.txt' "one`n"
+git -C $p.W1 add -- docs/r-super-loop-powers/g1/state.md docs/r-super-loop-powers/g1/resume-pending 2>$null
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+$names = (git -C $p.W1 show --name-only --format= HEAD | Out-String)
+Check 'pass-unstages-state' ($r.Code -eq 0 -and $names -match 'f1\.txt' -and $names -notmatch 'state\.md' -and $names -notmatch 'resume-') ($r.Out + $names)
+
+# The verdict is the first of PASS / REVISE / REPLAN / BLOCKED in gate-decision.md.
+$p = New-Prepared 'verdict'
+Add-Work $p 1 'f1.txt' "one`n"
+$gd = Join-Path $p.C1 'milestones\1-one\gate-decision.md'
+W $gd "# 判定`nREVISE: 前回の PASS は取り消し`n"
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+Check 'pass-refused-revise-mentions-pass' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and ((Get-Text (Join-Path $p.Led 'm1.json')) | ConvertFrom-Json).status -eq 'running') $r.Out
+W $gd "# 判定`n判定はPASSです`n"
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+Check 'pass-accepts-japanese-pass' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and ((Get-Text (Join-Path $p.Led 'm1.json')) | ConvertFrom-Json).status -eq 'passed') $r.Out
+
+# A decorated milestone name: the gate file is found by the number (milestones\<n>-*).
+$d = New-Repo (Join-Path $t 'deco') $stateLf
+$r = Invoke-Par (Join-Path $d 'docs\r-super-loop-powers\g1') @('-Prepare', '-Milestones', '1-one (CP1),2-two')
+$dw1 = Join-Path $t 'deco.rslp\g1-m1'; $dc1 = Join-Path $dw1 'docs\r-super-loop-powers\g1'
+$dc2 = Join-Path $t 'deco.rslp\g1-m2\docs\r-super-loop-powers\g1'
+W (Join-Path $dw1 'f1.txt') "one`n"
+W (Join-Path $dc1 'milestones\1-one\gate-decision.md') "PASS`n"
+$r = Invoke-Par $dc1 (@('-Pass') + $fast)
+Check 'pass-finds-gate-by-number' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and (Get-Kv $r.Out 'ROLE') -eq 'wait') $r.Out
+W (Join-Path $dc2 'milestones\2-x\gate-decision.md') "PASS`n"
+W (Join-Path $dc2 'milestones\2-y\gate-decision.md') "PASS`n"
+$r = Invoke-Par $dc2 (@('-Pass') + $fast)
+Check 'pass-refused-gate-ambiguous' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and (Get-Kv $r.Out 'REASON') -match '2-\*') $r.Out
+
+# A file that is untracked (and not ignored) in the base must not be committed by -Pass.
+$p = New-Prepared 'untracked'
+W (Join-Path $p.Base 'local.cfg') "secret`n"
+Add-Work $p 1 'f1.txt' "one`n"
+Copy-Item -LiteralPath (Join-Path $p.Base 'local.cfg') -Destination (Join-Path $p.W1 'local.cfg')
+$headU = (git -C $p.W1 rev-parse HEAD).Trim()
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+$idx = (git -C $p.W1 diff --cached --name-only | Out-String).Trim()
+Check 'pass-refused-untracked-in-base' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and (Get-Kv $r.Out 'REASON') -match 'local\.cfg' -and (git -C $p.W1 rev-parse HEAD).Trim() -eq $headU -and ((Get-Text (Join-Path $p.Led 'm1.json')) | ConvertFrom-Json).status -eq 'running' -and $idx -eq '') ($r.Out + "index: $idx")
+
+# The merger file cannot be created for another reason (access denied): busy, not a crash.
+$p = New-Prepared 'busy'
+New-Item -ItemType Directory -Path (Join-Path $p.Led 'merger') -Force | Out-Null
+Add-Work $p 1 'f1.txt' "one`n"
+$r = Invoke-Par $p.C1 (@('-Pass') + $fast)
+Check 'pass-merger-busy' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and (Get-Kv $r.Out 'ROLE') -eq 'wait') $r.Out
 
 $p = New-Prepared 'halt'
 $r = Invoke-Par $p.C1 @('-Halt')
@@ -247,13 +301,15 @@ git -C $p.Base checkout -q -- app.txt
 $r = Invoke-Par $p.C2 @('-Merge')
 Check 'merge-ok' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and (Test-Path (Join-Path $p.Base 'f1.txt')) -and (Test-Path (Join-Path $p.Base 'f2.txt')) -and $r.Out -match '(?m)^MERGED: m1 \| [0-9a-f]{7}' -and $r.Out -match '(?m)^MERGED: m2 \| ' -and $r.Out -match '(?m)^WALL_MINUTES: \d+' -and $r.Out -match '(?m)^SERIAL_MINUTES: \d+') $r.Out
 $cl = Get-Text (Join-Path $p.G 'call-log.md'); $hl = Get-Text (Join-Path $p.G 'hook-log.md')
-Check 'merge-union-keeps-both' ($cl -match 'B-6 gate \[m1\]' -and $cl -match 'B-6 gate \[m2\]' -and $hl -match '(?m)\| m=1$' -and $hl -match '(?m)\| m=2$' -and $hl -match '10:06' -and $cl -notmatch '<<<<<<<') ($cl + $hl)
-Check 'merge-base-state-untouched' ((Get-Text (Join-Path $p.G 'state.md')) -match '(?m)^- phase: parallel$') (Get-Text (Join-Path $p.G 'state.md'))
+Check 'merge-union-keeps-both' ($cl -match 'B-6 gate \[m1\]' -and $cl -match 'B-6 gate \[m2\]' -and $hl -match '(?m)\| m=1\r?$' -and $hl -match '(?m)\| m=2\r?$' -and $hl -match '10:06' -and $cl -notmatch '<<<<<<<') ($cl + $hl)
+Check 'merge-base-state-untouched' ((Get-Text (Join-Path $p.G 'state.md')) -match '(?m)^- phase: parallel\r?$') (Get-Text (Join-Path $p.G 'state.md'))
 $pl = Get-Text (Join-Path $p.G 'parallel-log.md')
-Check 'merge-writes-parallel-log' ($pl.StartsWith('# parallel-log — g1') -and $pl -match '(?m)^## \d{4}-\d{2}-\d{2} \d{2}:\d{2} 1-one \+ 2-two$' -and $pl -match '壁時計 \d+ 分 / 直列換算 \d+ 分' -and $pl -match '(?m)^- 中止: なし$' -and $pl -match '(?m)^\| 1-one \| merged \| ' -and $pl -match '(?m)^\| 2-two \| merged \| ') $pl
+Check 'merge-writes-parallel-log' ($pl.StartsWith('# parallel-log — g1') -and $pl -match '(?m)^## \d{4}-\d{2}-\d{2} \d{2}:\d{2} 1-one \+ 2-two\r?$' -and $pl -match '壁時計 \d+ 分 / 直列換算 \d+ 分' -and $pl -match '(?m)^- 中止: なし\r?$' -and $pl -match '(?m)^\| 1-one \| merged \| ' -and $pl -match '(?m)^\| 2-two \| merged \| ') $pl
 $headB = (git -C $p.Base rev-parse HEAD).Trim()
 $r = Invoke-Par $p.C2 @('-Merge')
 Check 'merge-rerun-noop' ($r.Code -eq 0 -and (git -C $p.Base rev-parse HEAD).Trim() -eq $headB -and ([regex]::Matches((Get-Text (Join-Path $p.G 'parallel-log.md')), '(?m)^## ')).Count -eq 1) $r.Out
+$r = Invoke-Par $p.G @('-Cleanup', '-Abandon')
+Check 'cleanup-abandon-refused-after-merge' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and (Test-Path $p.Led)) $r.Out
 $r = Invoke-Par $p.C2 @('-Cleanup')
 Check 'cleanup-refused-from-child' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED') $r.Out
 $r = Invoke-Par $p.G @('-Cleanup')
@@ -264,7 +320,7 @@ Check 'status-none-after-cleanup' ((Get-Kv $r.Out 'GROUP') -eq 'none') $r.Out
 # 衝突(同じ実装ファイルを両方が書く)と、その後の中止。
 $p = New-Passed 'conflict' 'same.txt' 'same.txt'      # Add-Work の本文は m1 と m2 で違う
 $r = Invoke-Par $p.C2 @('-Merge')
-Check 'merge-conflict' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'CONFLICT' -and $r.Out -match '(?m)^CONFLICT_FILE: same\.txt' -and $r.Out -match '(?m)^UNMERGED: m2' -and $r.Out -match '(?m)^MERGED: m1 \| ') $r.Out
+Check 'merge-conflict' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'CONFLICT' -and $r.Out -match '(?m)^CONFLICT_FILE: same\.txt' -and $r.Out -match '(?m)^UNMERGED: m2 \| [0-9a-f]{40}\r?$' -and $r.Out -match '(?m)^MERGED: m1 \| ') $r.Out
 $gj = (Get-Text (Join-Path $p.Led 'group.json')) | ConvertFrom-Json
 Check 'merge-conflict-recorded' (-not $gj.merged -and @($gj.redo).Count -eq 0 -and @($gj.conflicts).Count -eq 1 -and [string]@($gj.conflicts)[0].n -eq '2' -and @(@($gj.conflicts)[0].files) -contains 'same.txt') (Get-Text (Join-Path $p.Led 'group.json'))
 Check 'merge-conflict-next-names-keep' ((Get-Kv $r.Out 'NEXT') -match '-Halt .*-Keep 1\b' -and (Get-Kv $r.Out 'NEXT') -match 'same\.txt') $r.Out
@@ -273,13 +329,13 @@ $gj = (Get-Text (Join-Path $p.Led 'group.json')) | ConvertFrom-Json
 Check 'merge-conflict-rerun-no-duplicate' ((Get-Kv $r.Out 'STATUS') -eq 'CONFLICT' -and @($gj.conflicts).Count -eq 1) (Get-Text (Join-Path $p.Led 'group.json'))
 Check 'merge-conflict-aborted' (-not (git -C $p.Base rev-parse -q --verify MERGE_HEAD 2>$null) -and (Get-Text (Join-Path $p.Base 'same.txt')) -notmatch '<<<<<<<') (git -C $p.Base status | Out-String)
 $r = Invoke-Par $p.G @('-Cleanup')
-Check 'cleanup-refused-before-merge' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED') $r.Out
+Check 'cleanup-refused-before-merge' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and (Get-Kv $r.Out 'NEXT') -match '-Abandon') $r.Out
 $r = Invoke-Par $p.C2 @('-Halt', '-Keep', '2', '-Reason', 'x')
 Check 'halt-refused-keep-unmerged-after-partial-merge' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and (Get-Kv $r.Out 'NEXT') -match '-Keep 1\b' -and -not (Test-Path (Join-Path $p.Led 'halt.json'))) $r.Out
 $r = Invoke-Par $p.C2 @('-Halt', '-Keep', '1', '-Reason', 'merge conflict: same.txt')
 $r = Invoke-Par $p.C2 @('-Merge')
 $pl = Get-Text (Join-Path $p.G 'parallel-log.md')
-Check 'merge-after-halt-keep' ($r.Code -eq 0 -and $r.Out -match '(?m)^REDO: m2' -and $pl -match '(?m)^- 中止: m1 を残して中止\(merge conflict: same\.txt\)$' -and $pl -match '(?m)^- 合流の衝突: m2: same\.txt$' -and $pl -match '(?m)^\| 2-two \| redo \| ') ($r.Out + $pl)
+Check 'merge-after-halt-keep' ($r.Code -eq 0 -and $r.Out -match '(?m)^REDO: m2' -and $pl -match '(?m)^- 中止: m1 を残して中止\(merge conflict: same\.txt\)\r?$' -and $pl -match '(?m)^- 合流の衝突: m2: same\.txt\r?$' -and $pl -match '(?m)^\| 2-two \| redo \| ') ($r.Out + $pl)
 $r = Invoke-Par $p.G @('-Cleanup')
 Check 'cleanup-keeps-redo' ($r.Code -eq 0 -and -not (Test-Path $p.W1) -and (Test-Path $p.W2) -and $r.Out -match '(?m)^KEPT_BRANCH: rslp/g1/m2' -and $r.Out -match '(?m)^KEPT_WORKTREE: ' -and -not (Test-Path $p.Led)) $r.Out
 
@@ -304,6 +360,52 @@ $p = New-Passed 'branch'
 git -C $p.Base checkout -q -b other
 $r = Invoke-Par $p.C2 @('-Merge')
 Check 'merge-refused-wrong-branch' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and $r.Out -match 'main') $r.Out
+
+# A merged child with uncommitted work is kept (WARN); -Force removes it anyway.
+$p = New-Passed 'dirty'
+$null = Invoke-Par $p.C2 @('-Merge')
+W (Join-Path $p.W1 'f1.txt') "edited`n"
+W (Join-Path $p.W1 'new.txt') "new`n"
+$r = Invoke-Par $p.G @('-Cleanup')
+Check 'cleanup-keeps-dirty-child' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and $r.Out -match '(?m)^WARN: .*g1-m1 has uncommitted changes: .*f1\.txt' -and (Get-Kv $r.Out 'REMAINING') -eq '1' -and (Test-Path $p.W1) -and -not (Test-Path $p.W2) -and (Test-Path $p.Led) -and (git -C $p.Base branch --list 'rslp/g1/m1')) $r.Out
+$r = Invoke-Par $p.G @('-Cleanup', '-Force')
+Check 'cleanup-force-removes-dirty-child' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and -not (Test-Path $p.W1) -and -not (Test-Path $p.Led) -and -not (git -C $p.Base branch --list 'rslp/g1/*')) $r.Out
+
+# Give the group up without merging: only the ledger goes, the log gets a section.
+$p = New-Prepared 'abandon'
+$r = Invoke-Par $p.C1 @('-Cleanup', '-Abandon')
+Check 'cleanup-abandon-refused-from-child' ($r.Code -ne 0 -and (Get-Kv $r.Out 'STATUS') -eq 'REFUSED' -and (Test-Path $p.Led)) $r.Out
+$r = Invoke-Par $p.G @('-Cleanup', '-Abandon')
+$pl = Get-Text (Join-Path $p.G 'parallel-log.md')
+Check 'cleanup-abandon' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and ([regex]::Matches($r.Out, '(?m)^KEPT_WORKTREE: ')).Count -eq 2 -and ([regex]::Matches($r.Out, '(?m)^KEPT_BRANCH: ')).Count -eq 2 -and (Test-Path $p.W1) -and (Test-Path $p.W2) -and (git -C $p.Base branch --list 'rslp/g1/*' | Measure-Object).Count -eq 2 -and -not (Test-Path $p.Led) -and (Get-Kv $r.Out 'NEXT') -match 'loop-log' -and $pl -match '(?m)^## \d{4}-\d{2}-\d{2} \d{2}:\d{2} 1-one \+ 2-two\r?$' -and $pl -match '(?m)^- 中止: 合流せずに打ち切り\r?$' -and $pl -match '(?m)^- 合流の衝突: なし\r?$' -and $pl -match '(?m)^\| 1-one \| redo \| ' -and $pl -match '(?m)^\| 2-two \| redo \| ') ($r.Out + $pl)
+$r = Invoke-Par $p.G @('-Status')
+Check 'status-none-after-abandon' ((Get-Kv $r.Out 'GROUP') -eq 'none') $r.Out
+
+# --- core.autocrlf true (the Windows default) ---
+$p = New-Prepared 'crlf-true' -AutoCrlf
+$sc = Get-Text (Join-Path $p.C1 'state.md')
+Check 'autocrlf-true-prepare' ((Test-Path (Join-Path $p.Led 'group.json')) -and $sc -match ('(?m)^- parallel-base: ' + [regex]::Escape($p.Base) + '\r?$')) $sc
+Add-Work $p 1 'f1.txt' "one`n"
+Add-Work $p 2 'f2.txt' "two`n"
+$r1 = Invoke-Par $p.C1 (@('-Pass') + $fast)
+$r2 = Invoke-Par $p.C2 (@('-Pass') + $fast)
+Check 'autocrlf-true-pass' ((Get-Kv $r1.Out 'ROLE') -eq 'wait' -and (Get-Kv $r2.Out 'ROLE') -eq 'merger') ($r1.Out + $r2.Out)
+$r = Invoke-Par $p.C2 @('-Merge')
+$hl = Get-Text (Join-Path $p.G 'hook-log.md')
+Check 'autocrlf-true-merge' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and (Test-Path (Join-Path $p.Base 'f1.txt')) -and (Test-Path (Join-Path $p.Base 'f2.txt')) -and $hl -match '(?m)\| m=1\r?$' -and $hl -match '(?m)\| m=2\r?$') ($r.Out + $hl)
+$r = Invoke-Par $p.G @('-Cleanup')
+Check 'autocrlf-true-roundtrip' ($r.Code -eq 0 -and (Get-Kv $r.Out 'STATUS') -eq 'OK' -and $r.Out -notmatch '(?m)^WARN' -and -not (Test-Path $p.W1) -and -not (Test-Path $p.W2) -and -not (Test-Path $p.Led)) $r.Out
+
+# git's stderr (an "LF will be replaced by CRLF" warning) is not read as a conflicted file.
+$p = New-Prepared 'crlf-warn' -AutoCrlf -BeforePrepare { param($pb) W (Join-Path $pb 'docs\r-super-loop-powers\g1\resume-packet.md') "# packet`n"; git -C $pb add -A 2>$null; git -C $pb commit -q -m packet 2>$null }
+Add-Work $p 1 'same.txt' "one`n"
+Add-Work $p 2 'same.txt' "two`n"
+$null = Invoke-Par $p.C1 (@('-Pass') + $fast)
+$null = Invoke-Par $p.C2 (@('-Pass') + $fast)
+W (Join-Path $p.G 'resume-packet.md') "# packet`nrewritten by a later -Mark`n"
+$r = Invoke-Par $p.C2 @('-Merge')
+$cf = @([regex]::Matches($r.Out, '(?m)^CONFLICT_FILE: ([^\r\n]*)') | ForEach-Object { $_.Groups[1].Value.Trim() })
+Check 'merge-conflict-stderr-not-parsed' ((Get-Kv $r.Out 'STATUS') -eq 'CONFLICT' -and $cf.Count -eq 1 -and $cf[0] -eq 'same.txt' -and (Get-Kv $r.Out 'NEXT') -notmatch 'warning') $r.Out
 
 $b = [IO.File]::ReadAllBytes($script)
 Check 'script-has-bom' ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) 'save parallel.ps1 as UTF-8 with BOM'
