@@ -39,12 +39,21 @@ function Find-GoalDir([string]$Cwd) {
 }
 
 # One line per event in <goal-dir>/hook-log.md:
-#   "YYYY-MM-DD HH:MM | <Result> | <Field3> | <Note>"   (the same 4 columns as v0.8)
+#   "YYYY-MM-DD HH:MM | <Result> | <Field3> | <Note> | m=<n>"   (v0.8's 4 columns + the milestone number; m=- if unknown)
+# Leading digits of the "- milestone:" value in <GoalDir>\state.md, or '-' (never throws).
+function Get-MilestoneNumber([string]$GoalDir) {
+    try {
+        $s = [System.IO.File]::ReadAllText((Join-Path $GoalDir 'state.md'), $Utf8)
+        $m = [regex]::Match($s, '(?m)^\s*-\s*milestone:\s*\**\s*(\d+)')
+        if ($m.Success) { return $m.Groups[1].Value }
+    } catch { }
+    return '-'
+}
 function Write-HookLogLine([string]$GoalDir, [string]$Result, [string]$Field3, [string]$Note) {
     try {
         $one = ($Note -replace '[\r\n|]+', ' ').Trim()
         if ($one.Length -gt 200) { $one = $one.Substring(0, 200) }
-        $line = '{0} | {1} | {2} | {3}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm'), $Result, $Field3, $one
+        $line = '{0} | {1} | {2} | {3} | m={4}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm'), $Result, $Field3, $one, (Get-MilestoneNumber $GoalDir)
         [System.IO.File]::AppendAllText((Join-Path $GoalDir 'hook-log.md'), $line + "`n", $Utf8)
     } catch { }
 }

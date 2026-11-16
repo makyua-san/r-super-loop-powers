@@ -53,6 +53,12 @@ New-Transcript $tr @(50000, 120000)
 $r = Invoke-Meter (New-Input $proj $tr) $low
 Check 'below-silent' ($r.Code -eq 0 -and $r.Out -eq '') $r.Out
 Check 'below-logged' ((Get-Text $log) -match '\| CTX \| tokens=120000 \| tool=Agent') (Get-Text $log)
+Check 'log-milestone-none' ((Get-Text $log) -match '(?m)\| CTX \| tokens=120000 \| tool=Agent \| m=-$') (Get-Text $log)
+W (Join-Path $g 'state.md') "- phase: milestone-implementation`r`n- milestone: 12-orders (CP1)`r`n"
+New-Transcript $tr @(130000)
+$r = Invoke-Meter (New-Input $proj $tr) $low
+Check 'log-milestone-number' ((Get-Text $log) -match '(?m)\| CTX \| tokens=130000 \| tool=Agent \| m=12$') (Get-Text $log)
+W (Join-Path $g 'state.md') "- phase: milestone-implementation`n"
 
 New-Transcript $tr @(50000, 250000)
 $r = Invoke-Meter (New-Input $proj $tr) $low
