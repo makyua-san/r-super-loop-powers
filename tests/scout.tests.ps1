@@ -221,6 +221,14 @@ $rawOut = Join-Path $t 'list-raw.txt'
 $rawText = [IO.File]::ReadAllText($rawOut, $utf8)
 Check 'stdout-utf8-under-cp932' ($rawText -match '\| scout-1 \| web:n \| どこで決まるか' -and $rawText -match '# scout index — g1') $rawText
 
+# Parallel child (state.md has parallel-base): labels get the milestone prefix.
+$g7 = New-Goal 'g7'
+W (Join-Path $g7 'state.md') ($stateLf -replace '- milestone: 1-one', '- milestone: 3-three' -replace '- updated:', "- parallel-base: C:\base`n- updated:")
+$r = Invoke-Scout $g7 @('-WorkDir', $t, '-Question', 'q', '-Async')
+Check 'parallel-child-auto-label' ((Get-Kv $r.Out 'LABEL') -eq 'm3-scout-1' -and (Test-Path -LiteralPath (Join-Path $g7 'codex-runs\m3-scout-1.prompt.md'))) $r.Out
+$r = Invoke-Scout $g7 @('-WorkDir', $t, '-Question', 'q2', '-Async')
+Check 'parallel-child-auto-label-next' ((Get-Kv $r.Out 'LABEL') -eq 'm3-scout-2') $r.Out
+
 Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
 Write-Output 'ALL PASS'

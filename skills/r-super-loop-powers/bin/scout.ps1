@@ -220,11 +220,13 @@ if (-not (Test-Path -LiteralPath $EnvFile)) { Stop-Failed 'FAILED' "codex-env.js
 foreach ($d in @($runDir, $scoutDir)) { if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null } }
 
 if (-not $Label) {
+    $ptag = Get-ParallelTag (Read-TextFile (Join-Path $GoalDir 'state.md'))
+    $pfx = $(if ($ptag) { "$ptag-scout-" } else { 'scout-' })
     $n = 0
-    foreach ($f in @(Get-ChildItem -LiteralPath $runDir -Filter 'scout-*.meta.json' -ErrorAction SilentlyContinue)) {
-        if ($f.Name -match '^scout-(\d+)\.meta\.json$') { $v = [int]$Matches[1]; if ($v -gt $n) { $n = $v } }
+    foreach ($f in @(Get-ChildItem -LiteralPath $runDir -Filter "$pfx*.meta.json" -ErrorAction SilentlyContinue)) {
+        if ($f.Name -match ('^' + [regex]::Escape($pfx) + '(\d+)\.meta\.json$')) { $v = [int]$Matches[1]; if ($v -gt $n) { $n = $v } }
     }
-    $Label = 'scout-' + ($n + 1)
+    $Label = $pfx + ($n + 1)
 }
 if ($Label -notmatch '^[A-Za-z0-9._-]+$') { Stop-Failed 'FAILED' "Label must be [A-Za-z0-9._-]+ (got: $Label)" '' }
 if (Test-Path -LiteralPath (Join-Path $runDir "$Label.meta.json")) { Stop-Failed 'REFUSED' "label '$Label' already exists in $runDir" "scout.ps1 -GoalDir '$GoalDir' -Collect $Label  (or pass a new -Label)" }

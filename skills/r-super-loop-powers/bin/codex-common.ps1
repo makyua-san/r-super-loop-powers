@@ -110,3 +110,15 @@ function Import-CodexEnv([string]$Path) {
     }
     return $obj
 }
+
+# 'm<n>' when state.md marks a parallel child (a "- parallel-base:" line with a real value)
+# and "- milestone:" starts with a digit; '' otherwise.
+function Get-ParallelTag([string]$StateText) {
+    $b = [regex]::Match($StateText, '(?m)^\s*-\s*parallel-base:[ \t]*([^\r\n]*)')
+    if (-not $b.Success) { return '' }
+    $bv = $b.Groups[1].Value.Trim()
+    if (-not $bv -or $bv -eq '-') { return '' }
+    $m = [regex]::Match($StateText, '(?m)^\s*-\s*milestone:[ \t]*(\d+)')
+    if (-not $m.Success) { return '' }
+    return 'm' + $m.Groups[1].Value
+}

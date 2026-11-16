@@ -68,6 +68,8 @@ $r = Invoke-Log $g @('-SetPhase', 'milestone-implementation', '-SetMilestone', '
 Check 'learning-next-refused' ($r.Code -ne 0 -and $r.Out -match '(?m)^STATUS: REFUSED\r?$' -and $r.Out -match "/ 'CP:3-orders-and-degradation \(CP1\) — ACCEPT'" -and (Get-Text (Join-Path $g 'state.md')) -match '(?m)^- phase: learning$') $r.Out
 $r = Invoke-Log $g @('-SetPhase', 'done')
 Check 'learning-done-refused' ($r.Code -ne 0 -and $r.Out -match '(?m)^STATUS: REFUSED\r?$') $r.Out
+$r = Invoke-Log $g @('-SetPhase', 'parallel')
+Check 'learning-parallel-refused' ($r.Code -ne 0 -and $r.Out -match '(?m)^STATUS: REFUSED\r?$' -and (Get-Text (Join-Path $g 'state.md')) -match '(?m)^- phase: learning$') $r.Out
 W $design ((Get-Text $design) + ($row -f 'CP:3-orders-and-degradation (CP1) — ACCEPT', 'codex') + "`n")
 $r = Invoke-Log $g @('-SetPhase', 'milestone-implementation', '-SetMilestone', '4-next')
 Check 'learning-next-ok-decorated-milestone' ($r.Code -eq 0 -and (Get-Text (Join-Path $g 'state.md')) -match '(?m)^- milestone: 4-next$') $r.Out
@@ -162,6 +164,16 @@ $g3 = Join-Path $proj 'docs\r-super-loop-powers\g3'
 New-Item -ItemType Directory -Path $g3 -Force | Out-Null
 $r = Invoke-Log $g3 @('-Mark')
 Check 'mark-without-state-fails' ($r.Code -ne 0 -and $r.Out -match '(?m)^STATUS: FAILED' -and -not (Test-Path -LiteralPath (Join-Path $g3 'resume-pending'))) $r.Out
+
+$gp = Join-Path $proj 'docs\r-super-loop-powers\gp'
+W (Join-Path $gp 'state.md') ($stateLf -replace '- milestone: 1-one', '- milestone: 2-two' -replace '- updated:', "- parallel-base: C:\base`n- updated:")
+$r = Invoke-Log $gp @('-Who', 'fable', '-Purpose', 'B-6 gate')
+Check 'parallel-child-tags-call-log' ((Get-Text (Join-Path $gp 'call-log.md')) -match '(?m)\| fable \| milestone-implementation \| B-6 gate \[m2\]$') $r.Out
+W (Join-Path $gp 'state.md') ($stateLf -replace '- updated:', "- parallel-base: -`n- updated:")
+$r = Invoke-Log $gp @('-Who', 'fable', '-Purpose', 'serial')
+Check 'parallel-base-dash-no-tag' ((Get-Text (Join-Path $gp 'call-log.md')) -match '(?m)\| serial$') $r.Out
+$r = Invoke-Log $gp @('-SetPhase', 'parallel')
+Check 'phase-parallel-accepted' ($r.Code -eq 0 -and (Get-Text (Join-Path $gp 'state.md')) -match '(?m)^- phase: parallel$') $r.Out
 
 $r = Invoke-Log $g @()
 Check 'nothing-to-do-fails' ($r.Code -ne 0 -and $r.Out -match 'nothing to do') $r.Out

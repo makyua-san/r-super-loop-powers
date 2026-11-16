@@ -112,7 +112,7 @@ $gateTag = ''
 $gateArg = ''
 if ($updates['担当'] -eq 'hearing-fable') {
     $gateTag = 'A-0'; $gateArg = 'A-0'
-} elseif ((Get-Field $stateText 'phase') -eq 'learning' -and @('milestone-implementation', 'done') -contains $updates['phase']) {
+} elseif ((Get-Field $stateText 'phase') -eq 'learning' -and @('milestone-implementation', 'done', 'parallel') -contains $updates['phase']) {
     $gateTag = 'CP:' + (Get-Field $stateText 'milestone'); $gateArg = 'CP'
 }
 if ($gateTag) {
@@ -152,6 +152,8 @@ if ($Who) {
     $logText = Read-TextFile $logFile
     $nl = "`n"
     if ($logText.Contains("`r`n") -or ((-not $logText) -and $stateText.Contains("`r`n"))) { $nl = "`r`n" }
+    $ptag = Get-ParallelTag $stateText
+    if ($ptag) { $Purpose = "$Purpose [$ptag]" }
     $line = "$now | $Who | $Phase | $Purpose"
     if (-not $logText) { $logText = "# call-log — $(Split-Path -Leaf $GoalDir)$nl$nl" }
     elseif (-not $logText.EndsWith("`n")) { $logText += $nl }
