@@ -29,7 +29,7 @@ Goal Loopの目的は **A. 要件適合性** と **B. 未知の低減** の2つ(
    codex実体・バージョン・認証・モデル疎通を1回で確認する。codex は**技術PM・技術レビュー(高信頼)・グラレコ・スカウト・設計書役の5ロールだけ**、**すべて `gpt-6.1-sol` の読み取り専用**で使う。`PREFLIGHT: OK` なら `codex-env.json` のパスを state.md の `codex-env:` に記録する。`FAILED` なら `REASON:` をそのままユーザーへ提示して**停止する**(黙って別モデルへ落とさない。代替はユーザーが指名した場合のみ `-Model`)。旧 codex-env.json の扱いは `references/codex-invocation.md` 2-1。
 7. **実装役エージェントの確認**: Agentツールで使えるエージェント種別に `r-super-loop-powers:builder`(Sonnet 5.5)があることを確認する。無い場合(更新後に再起動していない等)はユーザーに報告して停止する。**汎用エージェントや `model: sonnet` 指定で実装を代行させない**。
 8. **対象プロジェクトの git 確認**: git リポジトリでない、またはコミットが1つも無い場合、`impl-check.ps1` は基準コミットが無いと実装役の変更を判定できない。そう説明して `git init` + 初回コミットを承認してもらう。**承認なしでワークフローBを開始しない。** Opus が自分の判断で `git init` やコミットをしない。
-9. **手順書の読込**: state.md の phase が `goal-definition`(または新規ゴール)なら `references/workflow-a.md` を、それ以外なら `references/workflow-b.md` を読む。**両方は読まない**(A-8 → B-1 の境では境界リセットの後に B を読む)。
+9. **手順書の読込**: state.md の phase が `goal-definition`(または新規ゴール)なら `references/workflow-a.md` を、それ以外なら `references/workflow-b.md` を読む。**両方は読まない**(A-8 → B-1 の境では境界リセットの後に B を読む)。state.md の phase が `parallel` か、`parallel-base:` 欄があれば `references/parallel.md` も読む。
 
 
 ## ディレクトリ契約
@@ -51,6 +51,7 @@ docs/r-super-loop-powers/<goal-slug>/
 ├── goal-gate-decision.md    # A-6 Goal Gate判定
 ├── call-log.md              # 呼び出し記録(PL-007。loop-log.ps1 が追記)
 ├── hook-log.md              # フックの記録
+├── parallel-log.md          # 並行区間の記録(parallel.ps1 が書く)
 ├── resume-pending           # 境界リセットの印
 ├── resume-packet.md         # 直近の再開パケット全文(resume-packet.ps1 が書く)
 ├── codex-env.json           # プリフライト結果
@@ -70,7 +71,7 @@ docs/r-super-loop-powers/<goal-slug>/
 
 ```markdown
 # state — <goal-slug>
-- phase: goal-definition | milestone-implementation | human-acceptance | finalization | learning | done
+- phase: goal-definition | milestone-implementation | human-acceptance | finalization | learning | parallel | done
 - 強度: MVP | 高信頼 | 未確定
 - milestone: <n>-<名前> または -
 - 次のCheckpoint: <n>-<名前> または -
@@ -80,6 +81,7 @@ docs/r-super-loop-powers/<goal-slug>/
 - skill-dir: <このスキルのディレクトリの絶対パス>        # 起動時チェック5で解決
 - codex-env: <codex-env.json の絶対パス>                 # 起動時チェック6で生成
 - codex-run: <実行中の codex 委譲ラベル。なければ ->     # 起動したら記入、判定が確定したら消す
+- parallel-base: <ベースの作業ツリー>   # 並行の子だけ(references/parallel.md)
 - updated: YYYY-MM-DD HH:MM
 ```
 
@@ -146,7 +148,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 
 ## 境界リセット(/clear と再開パケット)
 
-長い文脈は精度を落とし、コンパクションは制約を取りこぼす。このハーネスでは**正本はファイル、セッションは使い捨て**にする: 境界で state.md を更新し、印を置き、人間に `/clear` してもらう。`/clear` の直後に SessionStart フック(`hooks/resume-inject.ps1`)が `bin/resume-packet.ps1` で組んだ**再開パケット**(state.md 全文・制約系・未検証仮定・直近の判定・未完了の委譲。要約なし)を会話の先頭に注入する。フックは `/` コマンドを起こせないので、`/clear` は人間が打つ。
+長い文脈は精度を落とし、コンパクションは制約を取りこぼす。このハーネスでは**正本はファイル、セッションは使い捨て**にする: 境界で state.md を更新し、印を置き、人間に `/clear` してもらう。`/clear` の直後に SessionStart フック(`hooks/resume-inject.ps1`)が `bin/resume-packet.ps1` で組んだ**再開パケット**(state.md 全文・制約系・未検証仮定・直近の判定・未完了の委譲。要約なし)を会話の先頭に注入する。
 
 **境界**(ここで切る):
 - (a) 人間の入力待ちに入るとき(「待ち」を書いた直後)
@@ -160,8 +162,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\loop-log.ps
 2. ターンを終える。人間への文の末尾に「`/clear` のあと「続けて」と送ってください(文脈を捨てて、ファイルから再開します)」を添える。(a) では待ちの内容(質問・承認依頼)を先に書く
 3. `/clear` 後の最初の応答で、起動時チェック 3 の復唱を行う
 
-- 印は 24 時間で無効になる(その場合は従来どおり state.md から再開する)。印は `/clear` か新規起動でだけ使われ、`/compact` や `--resume` では使われない
-- パケットは 9,500 文字に収まるよう後方の節だけが切られる(制約系は切らない)。全文は `<goal-dir>/resume-packet.md`
+- 印は 24 時間で無効になる(その場合は従来どおり state.md から再開する)
 - `/clear` されずに続いた場合もそのまま続行してよい(印は次の `/clear` で使われる)
 
 ## プラグインのフック
