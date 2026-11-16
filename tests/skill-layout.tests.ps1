@@ -115,6 +115,20 @@ Check 'policy-pl009-design' ($policyText -match 'PL-009.*設計書.*読んでよ
 Check 'tpl-goal-frame-relation' ($gf -match '既存機能との関係') 'goal-frame knows the relation to existing features'
 Check 'readme-surveyor' ($readme -match '設計書役' -and $readme -match 'design-doc') 'README role table / repo layout'
 
+# v0.13: parallel milestone sessions (references/parallel.md, bin/parallel.ps1).
+$par = Get-Text (Join-Path $skillDir 'references\parallel.md')
+Check 'parallel-file' ($par -ne '') 'references/parallel.md missing'
+Check 'parallel-sections' ($par -match '(?m)^## 1\. 分割の判定' -and $par -match '(?m)^## 2\. 準備' -and $par -match '(?m)^## 3\. 子のセッション' -and $par -match '(?m)^## 4\. 合流' -and $par -match '(?m)^## 5\. 見立てが外れたとき' -and $par -match '(?m)^## 6\. 後片付け') 'parallel.md sections'
+Check 'parallel-commands' ($par -match 'parallel\.ps1"? -Prepare' -and $par -match '-Milestones' -and $par -match 'parallel\.ps1"? -Pass' -and $par -match 'parallel\.ps1 -Merge' -and $par -match 'parallel\.ps1 -Halt' -and $par -match '-Keep' -and $par -match 'parallel\.ps1 -Cleanup' -and $par -match 'parallel\.ps1 -Status') 'parallel.md commands'
+Check 'parallel-outputs' ($par -match 'ROLE: wait' -and $par -match 'ROLE: merger' -and $par -match 'STATUS: HALTED' -and $par -match 'STATUS: CONFLICT' -and $par -match 'CONFLICT_FILE:' -and $par -match 'REDO:' -and $par -match 'KEPT_BRANCH:') 'parallel.md output keys'
+Check 'parallel-rules' ($par -match '両方が挙げた組だけ' -and $par -match '最大 2 本' -and $par -match '同じ Checkpoint' -and $par -match 'MVP' -and $par -match 'RSLP_HOOK_CHILD' -and $par -match 'COUPLED:' -and $par -match '## PARALLEL' -and $par -match '作業ツリーの準備') 'parallel.md rules'
+Check 'a-parallel' ($a -match 'references/parallel\.md' -and $a -match '## PARALLEL' -and $a -match '並行候補') 'workflow-a points to parallel.md'
+Check 'b-parallel' ($b -match 'references/parallel\.md' -and $b -match 'parallel-base:' -and $b -match 'parallel-log\.md' -and $b -match '`m=` 列') 'workflow-b points to parallel.md'
+Check 'policy-parallel' ($policyText -match '(?m)^## マイルストーンの並行\(MVP のみ\)' -and $policyText -match '見立て外れ' -and $policyText -match 'parallel-log\.md') 'policy.md parallel section'
+$rt = Get-Text (Join-Path $tpl 'retrospective-note.md')
+Check 'tpl-retro-parallel' ($rt -match '(?m)^- 並行' -and $rt -match '直列換算' -and $rt -match '見立て外れ') 'retro template parallel line'
+Check 'readme-parallel' ($readme -match 'parallel\.ps1' -and $readme -match 'マイルストーンの並行') 'README parallel'
+
 if ($script:failures -gt 0) { Write-Output "FAILURES: $($script:failures)"; exit 1 }
 Write-Output 'ALL PASS'
 exit 0

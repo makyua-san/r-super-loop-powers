@@ -50,6 +50,7 @@ MVPモード(v0.3)では、人間にHOW(UI・機能構成・実装方式)の確�
 - **新規ゴール**: 対象プロジェクトで `/r-super-loop-powers` を起動し、やりたいこと(Goal Seed)を伝える
 - **再開**: 同じコマンドで起動すると `docs/r-super-loop-powers/*/state.md` から現在地を復元する
 - **境界リセット(v0.9)**: 人間待ち・Checkpoint 確定・Goal Plan 承認の直後(と、文脈が 20 万トークンを超えたマイルストーン境界)で Opus が `state.md` を更新して印 `resume-pending` を置き、`/clear` を頼む。`/clear` のあと「続けて」と送ると、SessionStart フックが `bin/resume-packet.ps1` の再開パケット(state.md・否定リスト・制約/承認基準/終了条件・未検証仮定・直近の判定と retro・未完了の委譲。要約なし)を注入して再開する。コンパクションは使わない(制約の取りこぼしを避けるため)
+- **マイルストーンの並行(v0.13)**: 同じ Checkpoint の中で互いに干渉しない 2 つのマイルストーンは、別々の作業ツリー・別々のセッションで同時に進められる(MVP のみ。代理Fable と技術PM の両方が挙げ、利用者が了承した組だけ)。準備が済むと 2 つのフォルダが示されるので、それぞれでセッションを開いて「続けて」と送る。最後に PASS した側が合流し、続きは元のフォルダで行う。
 
 フェーズの流れ(MVP): 照合(スカウト) → `/model fable` → ヒアリング(Fableと直接会話) → Goal Frame(強度確定) → `/model opus` → ブレスト/Spec/Plan(Fable代理回答+技術PM回答・Checkpoint配置) → Goal Gate(Fable) → 人間承認(WHATレベル) → マイルストーン自律実装(Sonnet実装役 → impl-check → Fableゲート → 判断記録+グラレコ+中間コミット) → Checkpoint: 評価パッケージ → 人間受け入れ → 確定 → 振り返り
 
@@ -123,11 +124,15 @@ Stop フックは、ゴールループ中(`docs/r-super-loop-powers/*/state.md` 
 - [ ] call-log.md の追記と state.md の更新が `loop-log.ps1` で行われ、記帳だけのターンが無い
 - [ ] 実装役への Agent prompt がファイルのパスだけで、再委譲の prompt が `## 再委譲の差分` + 初回のパスになっている
 - [ ] hook-log.md に `CTX` 行があり、retro の観測欄に最大文脈と境界リセット回数が書かれている
+- [ ] A-8 の提示に並行候補が出て、了承した組だけが準備される(2 つのフォルダが示される)
+- [ ] 子のセッションが「続けて」で自分のマイルストーンから再開し、hook-log.md の行末に `m=<n>` が付く
+- [ ] 先に PASS した子は待ちで終わり、後に PASS した子が合流して、ベースのフォルダでの再開を頼む
+- [ ] ベースで再開すると後片付けが走り、retro の観測に並行の行(壁時計・直列換算・見立て外れ)が入る
 
 ## リポジトリ構成
 
 - `.claude-plugin/` — Claude版プラグインマニフェスト・マーケットプレイス定義
-- `skills/r-super-loop-powers/` — Claude版 SKILL.md(共通: 起動時チェック・契約・境界リセット) / policy.md(運用ポリシー) / templates/(11種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check・記帳 loop-log・再開パケット resume-packet・スカウト scout・設計書 design-doc) / `schemas/`(実装報告スキーマ) / `references/`(ワークフローA `workflow-a.md`・ワークフローB `workflow-b.md`・codex呼び出し規約・ロール憲章 roles.md)
+- `skills/r-super-loop-powers/` — Claude版 SKILL.md(共通: 起動時チェック・契約・境界リセット) / policy.md(運用ポリシー) / templates/(11種、Codex版の原本) / `bin/`(codex委譲ヘルパー・実装委譲の判定 impl-check・記帳 loop-log・再開パケット resume-packet・スカウト scout・設計書 design-doc・並行の準備と合流 `bin/parallel.ps1`) / `schemas/`(実装報告スキーマ) / `references/`(ワークフローA `workflow-a.md`・ワークフローB `workflow-b.md`・codex呼び出し規約・ロール憲章 roles.md・マイルストーンの並行 `references/parallel.md`)
 - `agents/` — Claude版の実装役エージェント定義(`builder.md`、Sonnet 5.5)
 - `hooks/` — Claude版のフック(`hooks.json` / 再開注入 `resume-inject.ps1` / 文脈メーター `context-meter.ps1` / 人間向け応答チェック `human-message-check.ps1` + `judge-prompt.md` / 共通部 `hook-common.ps1`)
 - `tests/` — `bin/`・`hooks/`・`scripts/sync-roles.ps1`・SKILL の配置のテスト(`powershell -File tests\<名>.tests.ps1`)

@@ -24,7 +24,7 @@ codex の起動・完了判定・STATUS の読み方は `references/codex-invoca
   3. 質問リスト(番号付き。アプローチ比較の問いは候補案を併記)
   4. 出力要求: 質問ごとに「回答 / 根拠(既存コードの該当箇所があれば引用) / 前提・リスク / 確信度(高・中・低)」。ユーザー判断が要る問いは `NEEDS_USER_VIEW:` 行で返す
 - **往復**: codexはセッションを継続しないため、**1ラウンド=1呼び出し**。effort `max` は1回が重いので、brainstormingの進行を止めない範囲でHOWの問いを束ねる(例: アプローチ提示の段階でそれまでのHOW論点をまとめて1回)。
-- **実装アセス(MVP・A-4末に1回。ラベル `techpm-assessment`)**: writing-plans が plan を書き終えたら、goal-frame.md を貼り、spec・plan・goal-plan.md(主要設計判断)はパスで渡し、**マイルストーンごと**に次を出させる — 採用する実装方式(1つに決め切る) / 触るファイル・関数 / 作業順 / 既知のリスクと回避策 / 完了を示す検証コマンド / 実装役が迷いそうな点への指示。出力は `## M<n>` 見出しで区切らせる。検証コマンドには、1 回 10 分を超える実測を入れさせない(超えるものは「運用で見る懸念」として書かせる。goal-frame.md の承認基準に利用者が入れたものと、否定リストに触れる確認は除く)。`STATUS: OK` の `FINAL_MESSAGE_FILE` を `tech-assessment.md`(goal直下)に保存し、goal-plan.md からリンクする。Goal Gate(A-6)の submission にも添付する(ゲートFableが実装方針を確認できるように)。
+- **実装アセス(MVP・A-4末に1回。ラベル `techpm-assessment`)**: writing-plans が plan を書き終えたら、goal-frame.md を貼り、spec・plan・goal-plan.md(主要設計判断)はパスで渡し、**マイルストーンごと**に次を出させる — 採用する実装方式(1つに決め切る) / 触るファイル・関数 / 作業順 / 既知のリスクと回避策 / 完了を示す検証コマンド / 実装役が迷いそうな点への指示。出力は `## M<n>` 見出しで区切らせる。検証コマンドには、1 回 10 分を超える実測を入れさせない(超えるものは「運用で見る懸念」として書かせる。goal-frame.md の承認基準に利用者が入れたものと、否定リストに触れる確認は除く)。`STATUS: OK` の `FINAL_MESSAGE_FILE` を `tech-assessment.md`(goal直下)に保存し、goal-plan.md からリンクする。Goal Gate(A-6)の submission にも添付する(ゲートFableが実装方針を確認できるように)。同じ Checkpoint に 2 つ以上のマイルストーンがあれば、`references/parallel.md` 1 の `## PARALLEL` 節も出させる。
   - REVISE / REPLAN で plan が変わった場合は、変わったマイルストーンについてのみ再アセスする。
 - **高信頼強度**: HOWは人間が決めるため必須ではない。人間が技術的見解を求めた場合のみ同じ契約で呼ぶ。
 - 呼び出しごとに `loop-log.ps1 -Who codex-techpm` で記録する。
@@ -72,7 +72,7 @@ codex の起動・完了判定・STATUS の読み方は `references/codex-invoca
   代理Fableへの依頼文に必ず含める: 「あなたはユーザーの代理として**ユーザー目線で**回答する。根拠は goal-frame.md と hearing-log.md。技術PMの見解が添付されている場合、技術的な実現性・リスクの評価はそれを前提とし、ユーザー価値の観点で選べ。技術PMの評価とユーザー価値が衝突し、選択でユーザー体験が大きく変わる場合は回答せず `ASK_HUMAN:` を返せ。**ユーザー固有の判断(好み・業務文脈・優先順位)が必要でヒアリング記録から導けない問い、否定リスト該当、エスカレーション発火条件該当の問いには、回答せず `ASK_HUMAN: <人間向けの質問文>` と返せ**。新しい懸念が出たら、1 回 10 分を超える実測は運用で見る懸念に置け。それを承認基準にしたいときは `ASK_HUMAN:` で利用者に確かめよ。」 ASK_HUMANが返った質問のみ人間へ提示し、回答を hearing-log.md に追記して代理Fableへ共有する。主要決定(採用アプローチ・設計承認・主要な技術選択)は goal-plan.md の「主要設計判断(Fable代理回答 / 技術PM回答による)」欄に、**どちらの回答を根拠にしたか**を付けて記録する。往復ごとに `loop-log.ps1 -Who fable|codex-techpm` で記録する。
 **未知の振り分け**: ヒアリング・ブレスト中に人間または代理Fableが「決めていない / わからない」と答えた問いは、その場で追及せず**仮説化して assumptions.md に記録し、続行する**。goal-frame.md の未知マップと突き合わせる。plan に書く対象ファイル・関数で場所が分からないものはスカウト(`bin/scout.ps1`)に投げる。
 **MVPでは plan 完成後に技術PMの実装アセスを取る**(「技術PM(Codex)共通契約」の実装アセス)。これが無いまま A-5 へ進まない。
-完了後、spec/planへの相対リンクとマイルストーン一覧を `goal-plan.md` に集約し、**Checkpoint印を付ける**(policy.md「Checkpointとマイルストーン粒度」: Checkpoint = ユーザー価値をE2Eで評価できる点。最終マイルストーンは必ずCheckpoint)。「主要設計判断(Fable代理回答 / 技術PM回答による)」欄もここに置く。
+完了後、spec/planへの相対リンクとマイルストーン一覧を `goal-plan.md` に集約し、**Checkpoint印を付ける**(policy.md「Checkpointとマイルストーン粒度」: Checkpoint = ユーザー価値をE2Eで評価できる点。最終マイルストーンは必ずCheckpoint)。「主要設計判断(Fable代理回答 / 技術PM回答による)」欄もここに置く。同じ Checkpoint に 2 つ以上のマイルストーンがあれば、並行の候補を判定して `## 並行候補` に書く(`references/parallel.md` 1)。
 
 **A-5 Approval Submission(Opus)**
 state.md を読み直してから、`templates/approval-submission.md` に従い、Goal Plan承認用の submission を作成する(対象: Goal Plan全体。**Checkpoint配置**・残存未知リスト・仮定台帳サマリを含める)。保存先: `goal-plan-submission.md`(goal直下)。
@@ -89,6 +89,6 @@ state.md を読み直してから、`templates/approval-submission.md` に従い
 
 **A-8 Human Goal Plan承認(人間)**
 Fable PASS後、人間に提示して実装へ進む承認を得る。
-- **MVP(WHATレベル)**: 提示は「ゴール解釈(goal-frameの方向)・要件・制約・マイルストーン一覧とCheckpoint配置・仮定台帳サマリ」に限定し、spec/planは参照リンクとして添付する(HOW詳細は承認対象にしない)。
+- **MVP(WHATレベル)**: 提示は「ゴール解釈(goal-frameの方向)・要件・制約・マイルストーン一覧とCheckpoint配置・仮定台帳サマリ・並行候補(あれば)」に限定し、spec/planは参照リンクとして添付する(HOW詳細は承認対象にしない)。
 - **高信頼**: 従来通り Goal Plan(と goal-frame)を提示する。
-承認されたら **境界リセット**(SKILL.md)を行う: `loop-log.ps1 -GoalDir "<goal-dir>" -SetPhase milestone-implementation -SetMilestone "1-<名前>" -SetCheckpoint "<n>-<名前>" -SetGate impl-gate -Clear 待ち -Mark` の 1 回で state.md を更新して印を置き、人間に `/clear` と「続けて」を頼んでターンを終える。再開後に `references/workflow-b.md` を読んで B-1 へ。
+承認されたら **境界リセット**(SKILL.md)を行う: `loop-log.ps1 -GoalDir "<goal-dir>" -SetPhase milestone-implementation -SetMilestone "1-<名前>" -SetCheckpoint "<n>-<名前>" -SetGate impl-gate -Clear 待ち -Mark` の 1 回で state.md を更新して印を置き、人間に `/clear` と「続けて」を頼んでターンを終える。再開後に `references/workflow-b.md` を読んで B-1 へ。最初のマイルストーンが了承済みの並行の組なら、この `-Mark` の代わりに `references/parallel.md` 2 の準備を行う。

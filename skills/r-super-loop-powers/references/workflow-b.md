@@ -5,7 +5,7 @@ SKILL.md(共通)の起動時チェック 9 から読まれる。state.md の pha
 ## 工程(マイルストーンごとに繰り返す)
 
 **B-1 開始確認(Fable・軽量)**
-state.md を読み直す。直近の retro.md 最大3件の要点を抜粋し、Agentツール(model: fable、新規インスタンス)に goal-frame.md + 対象マイルストーン定義(goal-plan.mdの該当部分) + retro抜粋(あれば)を渡し、「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ。実装方式は技術PMのアセスで決まっており、実装役(Sonnet 5.5)はそれを実行するだけである点を考慮せよ」と指示する。呼び出しは `loop-log.ps1 -Who fable -Purpose "B-1 <n>"` で記録する。
+state.md を読み直す。直近の retro.md 最大3件の要点を抜粋し、Agentツール(model: fable、新規インスタンス)に goal-frame.md + 対象マイルストーン定義(goal-plan.mdの該当部分) + retro抜粋(あれば)を渡し、「このマイルストーンが上位ゴールのどの成果を満たすか確認し、実装上の注意点があれば10行以内で示せ。実装方式は技術PMのアセスで決まっており、実装役(Sonnet 5.5)はそれを実行するだけである点を考慮せよ」と指示する。呼び出しは `loop-log.ps1 -Who fable -Purpose "B-1 <n>"` で記録する。並行の子(state.md に `parallel-base:` がある)は、`references/parallel.md` 3 の一文を依頼文に足す。
 
 **B-2〜B-3 実装と自己検証(Sonnet 実装役)**
 強度により委譲単位を変える(policy.md工程表):
@@ -74,7 +74,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\impl-check.
 - 実装・設計上の主要判断は随時 `milestones/<n>-<名前>/decisions.md`(`templates/decisions.md` の形式)に追記する(要件由来とAgent仮説を区別する)。
 
 **B-4 エスカレーション(必要時のみ)**
-policy.md の発火条件(否定リスト該当・ユーザー固有判断・Solution分岐・低確信を含む10件)を検出したら、`templates/escalation.md` の1〜6を整形し、Agentツール(model: fable、新規インスタンス)に goal-frame.md + 1〜6 + 関連する未検証仮定(assumptions.mdの該当行、あれば) + hearing-log.md の関連部分(あれば)を渡す。Fableは7(判定)に **DECIDE**(判断+根拠)または **ASK_HUMAN**(人間向け質問文)を記入する。ASK_HUMANの場合はOpusが人間へ提示し(境界(a): `loop-log.ps1 -SetWait "…" -Mark` の後にターンを終える)、回答を hearing-log.md に追記してから続行する。文書を milestone ディレクトリに `escalation-<連番>.md` として保存し、`loop-log.ps1 -Who fable` で記録する。
+policy.md の発火条件(否定リスト該当・ユーザー固有判断・Solution分岐・低確信を含む10件)を検出したら、`templates/escalation.md` の1〜6を整形し、Agentツール(model: fable、新規インスタンス)に goal-frame.md + 1〜6 + 関連する未検証仮定(assumptions.mdの該当行、あれば) + hearing-log.md の関連部分(あれば)を渡す。Fableは7(判定)に **DECIDE**(判断+根拠)または **ASK_HUMAN**(人間向け質問文)を記入する。ASK_HUMANの場合はOpusが人間へ提示し(境界(a): `loop-log.ps1 -SetWait "…" -Mark` の後にターンを終える)、回答を hearing-log.md に追記してから続行する。文書を milestone ディレクトリに `escalation-<連番>.md` として保存し、`loop-log.ps1 -Who fable` で記録する。並行の子で、判断が兄弟のマイルストーン定義を変えるなら `references/parallel.md` 5。
 
 **B-5 レビューとSubmission作成(Opus)**
 state.md を読み直す。
@@ -85,9 +85,10 @@ state.md を読み直す。
 **B-6 Implementation Gate(ゲートFable・新規インスタンス)**
 前提確認: submission.md が存在し、検証証拠と残存未知リストが含まれること。
 共通契約に従い goal-frame.md + マイルストーン定義 + submission.md + assumptions.md の未検証仮定を渡し、判定観点で「このマイルストーンのゴールを満たし、残存未知が許容可能か」を判定させる。MVPでは、goal-frame.md の「運用で見る懸念」は利用者が許容した未知として扱い、確かめていないことを差し戻しの理由にしないと依頼文に書く。結果を `gate-decision.md` に保存し、`loop-log.ps1 -Who fable` で記録する。
-- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)+グラレコの送り先(下記 Learning 2b。あれば)→ 中間コミット → `loop-log.ps1 -SetMilestone "<次>" -SetGate impl-gate`。文脈メーターの通知「境界リセットの目安を超えている」が出ていれば `-Mark` も付けて**境界リセット**(境界(b))し、人間に `/clear` と「続けて」を頼んでターンを終える。出ていなければ**人間承認なしで次のB-1へ**
+- PASS + **並行の子**(state.md に `parallel-base:` がある)→ 中間コミットも B-7 も行わず、`references/parallel.md` 3 の `-Pass` へ
+- PASS + **MVPの非Checkpointマイルストーン** → **中間クローズ**: grareco-input.md作成(gate-decision.md / decisions.md の要点)+グラレコ生成(失敗は非ブロック)+グラレコの送り先(下記 Learning 2b。あれば)→ 中間コミット → `loop-log.ps1 -SetMilestone "<次>" -SetGate impl-gate`。文脈メーターの通知「境界リセットの目安を超えている」が出ていれば `-Mark` も付けて**境界リセット**(境界(b))し、人間に `/clear` と「続けて」を頼んでターンを終える。出ていなければ**人間承認なしで次のB-1へ**次が了承済みの並行の組なら、`-SetMilestone` の代わりに `references/parallel.md` 2。
 - PASS + Checkpointマイルストーン(MVP)または高信頼 → `loop-log.ps1 -SetPhase human-acceptance -SetGate human-acceptance` の後、B-7へ
-- REVISE / REPLAN → 指定された工程へ差し戻す(対象の未知・仮定が指定される。人間へは出さない)
+- REVISE / REPLAN → 指定された工程へ差し戻す(対象の未知・仮定が指定される。人間へは出さない。並行の子で、兄弟の定義に触れる戻りなら `references/parallel.md` 5)
 - BLOCKED → 人間へ質問して停止(境界(a))
 
 **B-7 Human Review Report=評価パッケージ(Opus)**
@@ -109,7 +110,7 @@ acceptance.md に ACCEPT があることを確認してから、Checkpoint範囲
 
 state.md を読み直してから始める。
 
-1. **Retrospective(Opus)**: `templates/retrospective-note.md` に従い `retro.md` を作成する(**MVP: Checkpoint単位** — 対象は前回Checkpoint以降の全マイルストーン / **高信頼**: マイルストーン単位)。観測欄に、ループ回数(REVISE/REPLAN差し戻し数)・呼び出し数(call-log.mdから)・主要フェーズ所要時間(call-logの時刻から概算)・**発見された未知**・人間向け応答の書き直し回数(hook-log.md の BLOCK 行の数と、主な理由)・**最大文脈**(hook-log.md の `CTX` 行の tokens の最大値)・**境界リセットの回数**(`RESUME` 行の数)を記載する(5:1目安はワークフローB以降、ハード制限ではない)。「再利用できる知見・テンプレート候補」に「なし」以外を書いた場合、**このプロジェクトの外でも効くもの**は orca-meta の MCP tool `record_lesson` で送る(軸は person / agent / method。orca-meta プラグインが導入されていない環境では省略してよい)。
+1. **Retrospective(Opus)**: `templates/retrospective-note.md` に従い `retro.md` を作成する(**MVP: Checkpoint単位** — 対象は前回Checkpoint以降の全マイルストーン / **高信頼**: マイルストーン単位)。観測欄に、ループ回数(REVISE/REPLAN差し戻し数)・呼び出し数(call-log.mdから)・主要フェーズ所要時間(call-logの時刻から概算)・**発見された未知**・人間向け応答の書き直し回数(hook-log.md の BLOCK 行の数と、主な理由)・**最大文脈**(hook-log.md の `CTX` 行の tokens の最大値)・**境界リセットの回数**(`RESUME` 行の数)・**並行**(並行した区間があるときだけ): 壁時計と直列換算(`parallel-log.md`)、見立て外れの件数(中止・合流の衝突・合流後の検証失敗)、子ごとの最大文脈(hook-log.md の `CTX` 行を `m=` 列で分ける)と B-6 差し戻し回数を記載する(5:1目安はワークフローB以降、ハード制限ではない)。「再利用できる知見・テンプレート候補」に「なし」以外を書いた場合、**このプロジェクトの外でも効くもの**は orca-meta の MCP tool `record_lesson` で送る(軸は person / agent / method。orca-meta プラグインが導入されていない環境では省略してよい)。
 1.5. **設計書の更新(Codex 設計書役)**: retro.md を書いたあと、グラレコの前に設計書 `docs/r-super-loop-powers/design.md` を更新する(**MVP: Checkpoint 単位** / **高信頼**: マイルストーン単位。MVP の非 Checkpoint のマイルストーンでは呼ばない)。Bash ツールの `timeout` を 600000 にする:
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File "<skill-dir>\bin\design-doc.ps1" `
@@ -121,4 +122,4 @@ state.md を読み直してから始める。
    - `STATUS: NO_IMAGE` は、実行は終わったが画像が無い状態。call-log に「画像なし」と記録して先へ進む
    v0.9 からは imagegen の SKILL.md を読まずに image_gen を直接呼ばせる(ツールが拒んだときだけ読む)。読んだ場合は `BOUNDARY_HIT` の `WARN:` が出るが想定内。生成・回収のどちらで失敗しても grareco-input.md を残したまま先へ進む(ループ完了をブロックしない) — ここは `STATUS: OK` 以外でも停止しない唯一の例外である。`loop-log.ps1 -Who codex-grareco` で記録する。生成した画像を Opus が Read しない(人間に見せるならパスを示す)。
 2b. **グラレコの送り先(任意・プロジェクトが定義している場合だけ)**: 対象プロジェクトに `docs/r-super-loop-powers/grareco-sink.md` があれば、それを読み、`templates/grareco-spec.md` の形式の構造データ(JSON)を grareco-input.md と同じ文脈で書いて、そのファイルの指示どおりに送る(例: r-beads は rb の報告に添え、ハブが図にして issue と日記に載せる)。2 の codex 画像生成とは独立で、どちらか一方が失敗しても他方は行う。送信の失敗はループを止めない(人間向けの報告で一言触れる)。送り先が無いプロジェクトでは何もしない。Opus 自身の操作なので call-log には記録しない。
-3. **次へ**: `-SetPhase` の前に `docs/r-super-loop-powers/` の未コミット分(設計書・retro・grareco)を Opus がコミットする。`-SetPhase` は設計書に `CP:<milestone>` の行が無いと `STATUS: REFUSED` で拒否される(1.5 に戻る)。未実装マイルストーンがあれば `loop-log.ps1 -SetPhase milestone-implementation -SetMilestone "<次>" -SetCheckpoint "<次のCheckpoint>" -SetGate impl-gate -Mark` で戻し(境界(c))、人間に `/clear` と「続けて」を頼む。再開後に B-1 から繰り返す。全マイルストーン完了なら `loop-log.ps1 -SetPhase done -SetGate none -Clear milestone,次のCheckpoint,待ち` にし、ゴール全体の完了を人間に報告する。
+3. **次へ**: `-SetPhase` の前に `docs/r-super-loop-powers/` の未コミット分(設計書・retro・grareco)を Opus がコミットする。`-SetPhase` は設計書に `CP:<milestone>` の行が無いと `STATUS: REFUSED` で拒否される(1.5 に戻る)。未実装マイルストーンがあれば `loop-log.ps1 -SetPhase milestone-implementation -SetMilestone "<次>" -SetCheckpoint "<次のCheckpoint>" -SetGate impl-gate -Mark` で戻し(境界(c))、人間に `/clear` と「続けて」を頼む。次が了承済みの並行の組なら、この呼び出しの代わりに `references/parallel.md` 2(`-SetPhase parallel` も設計書の行が無いと拒否される)。再開後に B-1 から繰り返す。全マイルストーン完了なら `loop-log.ps1 -SetPhase done -SetGate none -Clear milestone,次のCheckpoint,待ち` にし、ゴール全体の完了を人間に報告する。
